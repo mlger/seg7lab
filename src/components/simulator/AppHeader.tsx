@@ -41,7 +41,7 @@ export function AppHeader({ displaySvgRef }: { displaySvgRef: React.RefObject<SV
   const engines = useEngines();
   const modified = usePresetModified();
   const displayModeLabel = useSimulator((s) => s.displayMode);
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
 
   const issues = useMemo(() => {
     const list: { severity: 'error' | 'info'; code: string; message: string }[] = [];
@@ -147,15 +147,24 @@ export function AppHeader({ displaySvgRef }: { displaySvgRef: React.RefObject<SV
 
             <ExportMenu displaySvgRef={displaySvgRef} />
 
-            {/* theme */}
+            {/* theme — both icons render identically on server and client; visibility is
+                driven purely by the .dark class that next-themes applies before hydration,
+                so no localStorage-dependent branch exists during render (no hydration mismatch). */}
             <Button
               variant="outline"
               size="sm"
-              className="h-8 w-8 p-0"
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className="relative h-8 w-8 p-0"
+              onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
               aria-label="Toggle color theme"
             >
-              {theme === 'dark' ? <Sun className="h-4 w-4" aria-hidden /> : <Moon className="h-4 w-4" aria-hidden />}
+              <Sun
+                className="h-4 w-4 -rotate-90 scale-0 transition-transform duration-200 motion-reduce:transition-none dark:rotate-0 dark:scale-100"
+                aria-hidden
+              />
+              <Moon
+                className="absolute h-4 w-4 rotate-0 scale-100 transition-transform duration-200 motion-reduce:transition-none dark:rotate-90 dark:scale-0"
+                aria-hidden
+              />
             </Button>
           </div>
 

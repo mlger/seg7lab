@@ -79,3 +79,18 @@ Work Log:
 
 Stage Summary:
 - Complete interactive simulator delivered: all 22 spec requirement areas implemented with real algorithms (QM minimizer, Gray-code K-maps, parser, polarity model) and a single source of truth. Backend REST + SQLite with localStorage fallback. All exports functional. Browser-verified end-to-end.
+
+---
+Task ID: 11
+Agent: main (Z.ai Code)
+Task: Fix hydration mismatch on theme-toggle icon (user-reported error).
+
+Work Log:
+- Diagnosed: AppHeader rendered `{theme === 'dark' ? <Sun/> : <Moon/>}` — `useTheme().theme` is undefined during SSR (server always rendered Moon) but populated from localStorage on the client's first render (stored 'dark' → Sun) → element-structure mismatch (circle vs path), unfixable via suppressHydrationWarning.
+- Audited other hydration risks: Zustand store hydrate() is window-guarded + `hydrated` flag → applies persisted state only post-mount (SSR-safe); layout already has `suppressHydrationWarning` on <html>; Tailwind class-based dark variant confirmed (`@custom-variant dark`).
+- Fix (canonical shadcn/next-themes pattern): render BOTH icons unconditionally; visibility driven purely by CSS `dark:` variants (the .dark class is applied by next-themes' blocking script before hydration, so server HTML === client first render). Click handler now uses `resolvedTheme`. Added relative/absolute layout + rotate/scale cross-fade (motion-reduce:transition-none). Visual semantics preserved: dark → Sun, light → Moon.
+- `bun run lint` clean; dev.log clean.
+- Agent-browser verification: page loads with zero console errors/page errors; dark mode icons correct (Sun scale 1 / Moon scale 0); toggle click → light mode (class removed, localStorage 'light', body bg white, icons swapped); hard reload with stored 'light' → no hydration error; toggled to stored 'dark' (the exact failing scenario from the report) + hard reload → no hydration error, theme restored, icons correct; content smoke check (h1, 18 SVGs, theme button) + desktop/mobile screenshots OK.
+
+Stage Summary:
+- Hydration error eliminated at the root (no theme-dependent branch during render). Theme toggle verified interactive in both directions across reloads. No other hydration risks found in store/layout.
