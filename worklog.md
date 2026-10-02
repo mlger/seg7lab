@@ -260,3 +260,99 @@ Work Log:
 
 Stage Summary:
 - All four requested features implemented and browser-verified. Naming convention is now globally customizable with one store field; exports (Verilog/CircuitVerse/CSV/PDF) and every analytical view consume the same names. Preview column is a full direct-manipulation editor (click to toggle, drag to copy patterns between rows with inputs excluded). Verilog generator's name→bit mapping is now name-driven (would otherwise have emitted wrong bits after the convention flip).
+
+---
+Task ID: 3-b
+Agent: Explore (API + data layer)
+Task: Research-only analysis of API routes, Prisma schema, persistence contracts
+
+Work Log:
+- Read worklog.md fully (Task IDs 1→25) for conventions/final state; made no edits until this append.
+- Read every in-scope file completely: src/app/api/route.ts, api/projects/{route.ts,helpers.ts,[id]/route.ts}, api/presets/{route.ts,helpers.ts,[id]/route.ts}, prisma/schema.prisma, src/lib/db.ts, src/logic/project.ts, src/logic/presets.ts, src/lib/store.ts (all 1146 lines), plus the client fetch surface (ProjectManagerCard.tsx, page.tsx sync wiring, types/simulator.ts contract types).
+- Grepped src/ for fetch( — mapped the full client→API call graph: projects are called ONLY from ProjectManagerCard; presets from store.ts (apiUpsertPreset POST→409→PUT, DELETE, syncPresetsFromServer GET ?full=1).
+- Environment checks: zod v4 installed but 0 imports (all validation manual); no middleware.ts; NO migrations folder (db push --accept-data-loss only); next.config.ts has typescript.ignoreBuildErrors=true + reactStrictMode:false; dumped live SQLite DDL via Prisma raw query — PK-only indexes (no updatedAt index), User/Post scaffold tables present.
+- Traced preset offline-first sync end-to-end and proved the merge is broken: validateLibraryTablePreset/FontPreset (presets.ts:546-563) spread parsePresetFile results whose createdAt/updatedAt are stamped "now" (presets.ts:413, 431-432, 507-508), discarding stored timestamps → in syncPresetsFromServer (store.ts:946-968) server defs always compare newer → local offline edits to any preset that also exists server-side are silently clobbered.
+- Confirmed: N+1 in ProjectManagerCard.refresh (list + N per-id GETs, re-run after every save/delete/duplicate); projects have NO push-up sync (asymmetric vs presets — local-mode projects never reach the server); no optimistic locking (PUT unconditional last-write-wins); findUnique→update TOCTOU (concurrent delete → P2025 → 500 not 404); no request-size caps; no server-side validation of blob contents (any JSON object accepted as Project/Preset data — the E-coded validators run client-side only); no auth/ownership on any endpoint (world-readable/writable DB); request.json() ignores Content-Type (text/plain cross-origin POST accepted).
+- Catalogued minor issues: E-240 error-code collision (ProjectManagerCard save toasts vs circuitverse.ts engine code), serialize helpers map corrupt blobs to data:null with 200 OK, dead presence re-check in projects/route.ts POST (51-56), preset id charset unvalidated (slash in "user:" id orphans rows — breaks [id] routing), store.toProjectData hardcodes version:1 vs PROJECT_VERSION, double persistence (per-action persist + 250ms subscribe debounce), E-240/E-24x codes duplicated across layers.
+
+Stage Summary:
+- API layer is clean and consistent (helpers.ts pattern, {error} envelope, correct 400/404/409/500/201, P2002 race guard on preset create, Next 15+ awaited params) — but it is a "trust the client" layer: no auth/ownership, no body-size caps, no server-side blob validation.
+- Critical: preset sync merge-by-updatedAt compares parse-time stamps, so the server copy always wins — offline local preset edits are silently lost (store.ts:946-968 + presets.ts:546-563).
+- Performance: ProjectManagerCard defeats its own slim list endpoint with an N+1 full-hydration loop (use ?full=1 instead); Prisma log:['query'] unconditional (logs full blobs in prod).
+- Data model: opaque unbounded TEXT blobs, no updatedAt index for orderBy, scaffold User/Post models, db push --accept-data-loss with no migrations; cuid (server) vs client "user:" ids both work but charset unvalidated.
+- Reliability: TOCTOU races surface as 500 (P2025 unhandled), no optimistic locking (tabs/devices last-write-win), corrupt blobs silently become data:null.
+- Client-server contract: one-shot mount sync (no focus/polling/multi-tab storage events); localStorage is source of truth with best-effort server mirror for presets; local-mode projects never migrate up; versioning is soft (> check, "try anyway") and store hardcodes version:1.
+- Scores: presets routes 7-8/10, projects routes 7/10, helpers 7-8/10, schema 6/10, db.ts 6/10, logic/project.ts 8/10, logic/presets.ts (contracts) 7/10, store persistence 6/10, api/route.ts 3/10 (dead scaffold). Full 15-finding report + quick wins/refactors returned to orchestrator; no code changes made.
+
+---
+Task ID: 3-c
+Agent: Explore (UI components layer)
+Task: Research-only analysis of simulator components, hooks, page/layout, export utils
+
+Work Log:
+- Read worklog.md fully (Task IDs 1→25, plus 3-b appended mid-review) for conventions/final state; made no edits until this append.
+- Read every in-scope file completely: page.tsx (111), layout.tsx (47), globals.css (162), all 14 simulator components (7,592 lines total; LogicCircuitCard 727, TruthTableCard 646, ProjectManagerCard 438, KarnaughMapCard 411, PresetGalleryDialog 398, BooleanExpressionsCard 344, SevenSegmentDisplay 323, DisplayCard 284, CircuitVerseExportDialog 309, CustomCharacterCard 247, AppHeader 263, InputControlsCard 223, ExportMenu 135, ExplainBlock 83), hooks (use-toast 193, use-mobile 19), lib/useEngine.ts (96), utils/exporters.ts (336), download.ts (19), pdf.ts (108).
+- Cross-checked supporting files for verification: ui/tabs.tsx (confirmed Radix TabsContent unmounts inactive panels), ui/toaster.tsx (radix toast in use, not sonner), package.json (no React Compiler; strict mode off), next.config.ts, store.ts persistence tail (attachPersistence L1136-1144), pdf.ts esc() bytes (no hidden chars).
+- Audited Zustand selector discipline in every component: all consumers use atomic selectors (no object-returning selectors found); found 2 useSimulator.getState() escape hatches in KarnaughMapCard (L107/L114) vs selector subscriptions elsewhere.
+- Traced derived-state fan-out: usePresetModified instantiated independently in 4 components (AppHeader, TruthTableCard, DisplayCard, PresetGalleryDialog) → matchesTablePreset runs 4× per store change; useEngines drives 9 consumers.
+- Verified hydration/SSR: theme toggle uses dual-icon CSS pattern (no render-time branch); ValidatedInput uses render-time sync (no setState-in-effect); Date/Math.random confined to event handlers/effects; all localStorage access window-guarded; useId for SVG filter ids. No hydration risks found.
+- Audited a11y: aria roles/labels present throughout; interactive display segments have tabIndex+role=switch+keydown (main display) but GlyphPreview hit zones are mouse-only (documented, keyboard fallback = output cells); truth-table row selection and drag-to-copy are mouse-only (tr not focusable); KarnaughMap uses role=grid with raw button children (wrong structure); aria-label on non-interactive span (AppHeader modified dot); animate-pulse usages not covered by prefers-reduced-motion (only .wire-active is).
+- Perf spot-checks: CircuitVerseExportDialog useMemo deps include the free-text title → full .cv JSON (50KB+, thousands of nodes) rebuilt per keystroke; drag feedback (dropRow setState in onDragOver) re-renders all 32 rows; CustomCharacterCard grid renders 16-32 full SevenSegmentSvg instances each with feGaussianBlur glow; ProjectManagerCard.refresh does N+1 fetches (independently confirmed by 3-b); TruthTableCard font Select renders up to 400 non-virtualized SelectItems.
+- Confirmed duplication inventory: GROUP_PALETTE + hex→rgba helpers across KarnaughMapCard/exporters/SevenSegmentDisplay; segment-selector button group copy-pasted in KarnaughMapCard L125-143 and LogicCircuitCard L392-410; dead code in LogicCircuitCard (L420 onWheel={undefined}, L452 identical-branch ternary), BooleanExpressionsCard (L48-52 identical ternary), exporters (L299 void idx); AppHeader duplicate displayMode selector (L40/L47).
+- Verified theme/no-blue rule: shadcn tokens used consistently, accents are emerald/amber/rose/purple (#a855f7 in group palette is purple, not indigo/blue) — compliant; hardcoded hex colors in SVG (emerald/amber Tailwind palette values) are theme-unaware but consistent.
+- No code changes made (research-only per task).
+
+Stage Summary:
+- React layer is fundamentally healthy: atomic Zustand selectors everywhere, single-source-of-truth derivation via useEngine hooks, clean 'use client' boundaries, zero hydration risks, consistent toast/error/empty-state patterns, correct render-time-sync pattern in ValidatedInput.
+- Top performance issues: CircuitVerse dialog rebuilds the entire .cv project JSON on every title keystroke; drag-to-copy feedback re-renders the whole 32-row table per dragover event; usePresetModified is recomputed 4× per store change (one per consuming component); Characters tab renders 16-32 glow-filter SVGs; ProjectManager N+1 fetch (echoes 3-b).
+- UX safety gaps: project delete and preset delete are one-click destructive with no confirmation (AlertDialog exists in ui/); per-item Load/Duplicate/Delete buttons are not busy-gated (double-click races); ExportMenu's busy "…" labels can never be visible (menu closes on click).
+- A11y gaps: drag-to-copy and truth-table row selection are mouse-only; role=grid misused in KarnaughMap; aria-label on a non-interactive span; prefers-reduced-motion only covers .wire-active (not animate-pulse instances).
+- Duplication/dead code: shared palette + hex helpers + segment-selector group should be extracted; three files contain leftover dead branches/props; two toast libraries installed (sonner unused).
+- Component size: TruthTableCard (646) and LogicCircuitCard (727) each do 5+ jobs (toolbars, editing, DnD, rendering, explain) — prime extraction candidates; no virtualization anywhere (32 rows/400 select items tolerable today, fragile as features grow).
+- Tab architecture: Radix TabsContent unmounts inactive panels → circuit zoom/pan/gate-drag overrides and K-map hover state are silently discarded on every tab switch.
+- Scores: DisplayCard 9, InputControlsCard 9, ExplainBlock 9, download.ts 9; SevenSegmentDisplay 8.5, page/layout/globals/useEngine/exporters/pdf 8-8.5; AppHeader 8, BooleanExpressionsCard 8, ExportMenu 8, PresetGalleryDialog 8, use-toast 7, CircuitVerseExportDialog 7.5, CustomCharacterCard 7.5, KarnaughMapCard 7.5, LogicCircuitCard 7, TruthTableCard 7, ProjectManagerCard 7 (frontend half; backend half owned by 3-b), use-mobile 7 (dead in app context). Full report with TOP-15 findings + quick wins/refactors returned to orchestrator.
+
+---
+Task ID: 3-a
+Agent: Explore (logic layer)
+Task: Research-only analysis of src/logic/* + utils/binary.ts + types/simulator.ts
+
+Work Log:
+- Read worklog.md (all Task ID headers 1→25 + last 150 lines) for conventions/final state: ABCD (A=MSB) convention flip in Task 25, CircuitVerse export in Task 23, preset system in Task 22.
+- Read all 14 in-scope files completely (4,620 lines): booleanParser, circuitverse, decoder, engine, expressions, font, kmap, minimizer, presets, project, truthTable, verilogGenerator, utils/binary, types/simulator + scripts/verify-circuitverse.ts (677 lines).
+- Traced the ABCD bit-ordering convention end-to-end: binary.inputVarNames → expressions.varAtBit → kmap.buildKMap (hand-verified 4-bit minterm = row·4+col and 5-bit = A·16+row·4+col with rows=names[1,2], cols=[3,4]) → verilogGenerator.nameToBitMap (MSB→highest bit) → circuitverse input labels. All consistent.
+- Grepped every exported symbol for external consumers; found ~12 dead exports: matchesPreset (superseded by matchesTablePreset), fontIndexOf, glyphPatternByChar, isValidGroupSize, varWeight, collectVars, astGateCount, parserVarNames, expressionVarNames, sigma/pi/dontCareNotation, decodeRow/bitOf (0 external usages).
+- Ran 3 read-only bun repro scripts (stdin, no project files touched): (1) astToAscii("!(AB)") → "AB'" — full-table compare confirms semantic mismatch at A=0 (1 vs 0); (2) buildCircuitverseProject(direct mode, varNames=['W','X','Y','Z']) → throws E-242 "segment A references unknown variable 'A'" while minimized mode succeeds (26 ANDs); (3) validateLibraryTablePreset/FontPreset rewrite stored createdAt/updatedAt 2024-01-01→now (id preserved) — poisons store.ts:952 merge-by-updatedAt (stale server copy always wins, offline edits can be lost).
+- Confirmed parser/tokenizer cannot express multi-char custom variable names ("B1" → "Unknown variable B") although store.setVariableName permits ≤3-char names — capability mismatch introduced with Task 25 renames.
+- Verified by reasoning: minimizer pruning is sound (partialTerms >= bestCost.terms only evaluated when remainingOnes.length>0 → final cover strictly worse), POS-via-zeros+DeMorgan approach consistent, decoder.isSegmentLit polarity XOR correct for all 4 commonAnode/reverseLogic combos, 5-bit gray/aiken/xs3 generator semantics, resizeTable 5→4 drops the A=1 plane by design.
+- Strictness/API audit: zero `any` in layer; single non-null assertion (minimizer.ts:254 best!); 67 mostly-benign `as` casts; no circular imports (logic DAG: truthTable→font, engine→{truthTable,minimizer,kmap,expressions}, presets→{truthTable,font}, project→{decoder,truthTable,font}, circuitverse→{expressions,engine,binary}); computeEngines memoized via useEngine deps [truthTable, coverExcluded, coverAdded, variableNames].
+- Verified coverage gap: verify-circuitverse.ts (the only surviving in-repo test) never exercises custom varNames — exactly the blind spot where the critical E-242 bug lives; all other verification suites (139/102/67-check bun scripts) were ephemeral and deleted.
+
+Stage Summary:
+- Layer is genuinely pure and strict: no React/store/DOM imports, zero `any`, clean import DAG — testability is excellent except non-deterministic id/date generation (circuitverse randomId/randomScopeId, presets newUserId/new Date stamps).
+- CRITICAL (confirmed): circuitverse.ts:471 direct mode omits varNames when building minterm terms → any variable rename + "Direct SOP" export throws E-242. Fix = pass this.varNames to implicantToSopTerm.
+- MAJOR (confirmed): astToAscii misprints NOT-over-compound (!(AB) → "AB'", wrong semantics shown to users in BooleanExpressionsCard); library preset validators silently rewrite createdAt/updatedAt to now, corrupting the store's merge-by-updatedAt sync.
+- MAJOR: parser is single-letter-token-only while renames allow ≤3-char names — expression editor breaks for multi-char renames.
+- Minimizer is a correct exact QM + branch-and-bound, but budget exhaustion silently degrades to a greedy cover with no flag in MinimizeResult.
+- ~12 dead exports across 6 files; glyph/segment-output validation duplicated 3-4× (project.ts parseFontFile/parseFontGlyphsField vs presets.ts parseGlyphs + duplicated isSegmentOutput) with diverging E-code families.
+- rows-sorted-by-input invariant is implicit; project.ts validateProject ignores row.input values (positional reindexing) — silent corruption risk if any producer ever emits unsorted rows (buildFontTable sorts, all generators build in order, so currently safe).
+- types/simulator.ts mixes domain + persistence + engine-view + API types (ProjectSummary); verilogGenerator silently maps unknown literal names to bit 0 while circuitverse throws E-242 for the same condition — inconsistent failure modes.
+- Recommended next actions recorded in final report: 5 quick wins (E-242 one-liner + test, astToAscii parens, timestamp pass-through, dead-export purge, dead-ternary removal) and 5 deeper refactors (shared validation module, truth-table invariant enforcement, circuitverse module split with injectable ids, minimizer exactness flag + bitset chart, naming-capability decision).
+
+---
+Task ID: 4
+Agent: main (Z.ai Code — orchestrator)
+Task: Restore 7seglogi.tar, run it, and deliver a fullstack improvement analysis (explicitly NO implementation, per user request)
+
+Work Log:
+- Extracted upload/7seglogi.tar over /home/z/my-project (verified: identical platform base — package.json/bun.lock/Caddyfile byte-identical; tar is a strict superset of the template, no stale leftovers).
+- Ran bun run db:generate + db:push (DB already in sync — tar ships db/custom.db with Project/Preset tables + data). Restarted dev server via .zscripts/dev.sh with setsid; port 3000 healthy.
+- Browser-verified the restored app end-to-end (agent-browser): page renders (title "7-Segment Logic Simulator — Digital Logic Laboratory"), bit toggles / increment / all 6 tabs work, GET /api/presets?full=1 → 200, zero console/page errors, dev.log clean.
+- Orchestrated 3 parallel research-only Explore agents: 3-a logic layer (14 files, 4,620 lines, 3 suspected bugs empirically confirmed via read-only bun repros), 3-b API/data layer (13 files incl. store persistence + client contract), 3-c UI layer (page/layout/globals + 14 simulator components + hooks + export utils, 7,592 lines).
+- Personally verified the highest-severity claims in src/lib/store.ts (syncPresetsFromServer merge L941-970, apiUpsertPreset L215-232 unconditional PUT) and next.config.ts (ignoreBuildErrors: true, reactStrictMode: false).
+
+Stage Summary:
+- App restored and running on port 3000, browser-verified interactive.
+- Four confirmed correctness bugs: (1) CircuitVerse direct-SOP export throws E-242 after any variable rename (circuitverse.ts:471 omits varNames); (2) booleanParser astToAscii prints NOT-over-compound as A·B̄ instead of (A·B)̄; (3) preset offline-edit data loss — validateLibrary* restamps updatedAt=now so server always wins the L952 merge; (4) multi-char variable names (store allows ≤3 chars) break the single-letter expression tokenizer.
+- Architectural risks: trust-the-client data layer (blobs unvalidated server-side, no auth/ownership, no concurrency control), N+1 project refresh, no error boundary, 12 dead logic exports, validation duplicated 3-4×, next.config ignores TS build errors.
+- Full prioritized improvement report delivered to user in chat; nothing implemented (per explicit user instruction).
