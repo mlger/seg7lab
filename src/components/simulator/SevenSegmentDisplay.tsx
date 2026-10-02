@@ -230,6 +230,8 @@ export function BitStripDisplay({
  * Tiny bare glyph (no housing, no glow filter) for truth-table row previews.
  * Renders lit segments in amber, unlit in a faint outline and don't-cares dashed,
  * so 16–32 instances stay lightweight. Live: derived from the truth table.
+ * viewBox height 240 = full A..D geometry span (y 8–232) + stroke margins —
+ * a shorter box would clip segment D off the bottom of every preview.
  */
 export function GlyphPreview({
   outputs,
@@ -242,7 +244,7 @@ export function GlyphPreview({
 }) {
   return (
     <svg
-      viewBox="0 0 164 208"
+      viewBox="0 0 164 240"
       className={cn('h-9 w-auto', className)}
       role="img"
       aria-label={label ?? 'Row pattern preview'}

@@ -227,3 +227,19 @@ Work Log:
 
 Stage Summary:
 - Task 23 (Export to CircuitVerse) complete end-to-end: menu item → dialog (title, logic source, live gate-count preview, per-segment chips, education panel) → download of an importer-validated .cv file containing the user's current decoder as a real CircuitVerse gate circuit (inputs labeled D/C/B/A, shared inverters, one AND per product term, OR gates per segment, constants for always-on/off, 7-segment display incl. decimal point). Both logic modes browser-verified by capturing and validating the actual downloaded files. Engine verified by 30,835 automated checks incl. exhaustive logical simulation. Note: import fidelity is grounded in CircuitVerse's own serializer/loader source + a live production .cv sample; actual import at circuitverse.org was not performed in-browser (requires their file picker), but the generated files pass an exact replica of the site's ValidateData algorithm.
+
+---
+Task ID: 24
+Agent: main (Z.ai Code)
+Task: Fix segment D rendering bug (user report: "segment d its overlapping") + improvement suggestions catalog (no implementation)
+
+Work Log:
+- Investigated every segment renderer: SevenSegmentSvg (main display, viewBox 200x240 — geometrically verified OK incl. default skew transform math) and GlyphPreview (truth-table PREVIEW column + PresetGalleryDialog strips).
+- Root cause found via DOM getBBox measurement + VLM screenshot analysis: GlyphPreview used viewBox "0 0 164 208" while the shared GEOMETRY extends to y=232 — segment D (y 216-232) lay entirely BELOW the viewBox and was clipped away in every small preview; C/E bottoms (y 208-214) were also cut, which read as segments colliding at the bottom edge.
+- Fix: GlyphPreview viewBox changed to "0 0 164 240" (full A..D span y 8-232 + stroke margins; content x 10-154 keeps 10-unit side margins) in src/components/simulator/SevenSegmentDisplay.tsx, with an explanatory doc comment.
+- Verified with agent-browser: reloaded page, DOM measurement shows D bottom now maps to 30.9px inside the 32px viewport (D_inside_viewport: true); VLM confirms every digit (0,2,3,6,8...) now shows its complete bottom bar, closed rings, no clipping, no abnormal overlaps.
+- bun run lint: clean. dev.log: 200s only, no runtime/hydration errors.
+
+Stage Summary:
+- Segment D clipping bug fixed in GlyphPreview (one-line viewBox fix, affects TruthTableCard preview column + PresetGalleryDialog table/font preview strips). Main display, mini displays, custom-character grid and CircuitVerse dialog were verified unaffected.
+- Improvement suggestions catalog delivered to user as the next message (explicitly NOT implemented per user instruction).
