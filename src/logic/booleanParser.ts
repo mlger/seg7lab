@@ -282,7 +282,7 @@ export function astGateCount(ast: BoolAst): { and: number; or: number; not: numb
   return count;
 }
 
-/** Variable names for input width (MSB first). */
+/** Default variable names for input width (MSB first, A = MSB). */
 export function parserVarNames(bits: InputWidth): string[] {
-  return bits === 5 ? ['E', 'D', 'C', 'B', 'A'] : ['D', 'C', 'B', 'A'];
+  return bits === 5 ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
 }

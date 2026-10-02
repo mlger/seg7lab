@@ -240,10 +240,7 @@ export function LogicCircuitCard() {
   const form = expressionForm === 'pos' || expressionForm === 'cpos' ? 'pos' : 'sop';
   const engine = engines[activeSegment];
   const terms = form === 'sop' ? engine.activeSopTerms : engine.activePosTerms;
-  const varNames = useMemo(
-    () => (inputBits === 5 ? ['E', 'D', 'C', 'B', 'A'] : ['D', 'C', 'B', 'A']),
-    [inputBits],
-  );
+  const varNames = useSimulator((s) => s.variableNames);
 
   const circuit = useMemo(() => buildCircuit(terms, form, varNames), [terms, form, varNames]);
 

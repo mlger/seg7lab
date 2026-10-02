@@ -27,7 +27,7 @@ function hexToRgb(hex: string): [number, number, number] {
 /* ------------------------------------------------------------------ */
 
 export function buildTruthTableCsv(project: ProjectData): string {
-  const vars = inputVarNames(project.inputBits);
+  const vars = project.variableNames ?? inputVarNames(project.inputBits);
   const header = [...vars, 'Decimal', 'Hex', ...SEGMENT_NAMES];
   const lines = [header.join(',')];
   for (const row of project.truthTable.rows) {
@@ -100,6 +100,7 @@ export function buildVerilogModule(project: ProjectData, engines: SegmentEngineM
   return generateVerilog(project.inputBits, expressions, {
     moduleName: project.name,
     mintermLists,
+    varNames: project.variableNames,
   });
 }
 
@@ -150,7 +151,7 @@ export async function buildPngBlob(svg: SVGSVGElement, scale = 2): Promise<Blob>
 
 export function buildPdfReport(project: ProjectData, engines: SegmentEngineMap): Blob {
   const doc = new PdfDoc();
-  const vars = inputVarNames(project.inputBits);
+  const vars = project.variableNames ?? inputVarNames(project.inputBits);
   const dark: [number, number, number] = [0.12, 0.12, 0.15];
   const gray: [number, number, number] = [0.45, 0.45, 0.5];
   const M = 40; // margin

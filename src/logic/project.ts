@@ -293,6 +293,25 @@ export function validateProject(raw: unknown): ValidateResult {
     }
   }
 
+  // ---- custom variable names (optional, backward compatible) ----
+  let variableNames: string[] | undefined;
+  if (obj.variableNames !== undefined) {
+    if (Array.isArray(obj.variableNames)
+      && obj.variableNames.length === inputBits
+      && obj.variableNames.every((v) => typeof v === 'string')
+    ) {
+      const cleaned = obj.variableNames.map((v) => v.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 3));
+      const unique = new Set(cleaned);
+      if (cleaned.every((v) => v.length > 0) && unique.size === cleaned.length) {
+        variableNames = cleaned;
+      } else {
+        errors.push('E-225: "variableNames" must be unique non-empty names (A-Z, 0-9, _; ≤ 3 chars) — using defaults.');
+      }
+    } else {
+      errors.push(`E-226: "variableNames" must be an array of ${inputBits} strings — using defaults.`);
+    }
+  }
+
   return {
     ok: errors.length === 0,
     errors,
@@ -309,6 +328,7 @@ export function validateProject(raw: unknown): ValidateResult {
       coverAdded,
       tableStartCode,
       fontStart,
+      ...(variableNames ? { variableNames } : {}),
       ...(customFont ? { customFont } : {}),
       ...(appliedPresetId !== undefined ? { appliedPresetId } : {}),
       ...(appliedPresetName !== undefined ? { appliedPresetName } : {}),
@@ -339,11 +359,14 @@ function parseFontGlyphsField(raw: unknown): CustomFont | null {
 
 /** Rebuild a valid project when switching width with existing data. */
 export function migrateInputBits(project: ProjectData, bits: InputWidth): ProjectData {
+  const { variableNames, ...rest } = project;
   return {
-    ...project,
+    ...rest,
     inputBits: bits,
     currentInput: Math.min(project.currentInput, (1 << bits) - 1),
     truthTable: resizeTable(project.truthTable, bits),
+    // Variable names are width-specific — kept only if the width still matches.
+    ...(variableNames?.length === bits ? { variableNames } : {}),
   };
 }
 

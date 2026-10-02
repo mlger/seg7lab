@@ -8,7 +8,19 @@ const SEGMENT_INDEX: Record<SegmentName, number> = {
   A: 0, B: 1, C: 2, D: 3, E: 4, F: 5, G: 6, DP: 7,
 };
 
-const VAR_BIT: Record<string, number> = { A: 0, B: 1, C: 2, D: 3, E: 4 };
+/** Default variable names, MSB first (A = MSB). */
+function defaultVarNames(bits: InputWidth): string[] {
+  return bits === 5 ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
+}
+
+/** Map each variable name to its bit index (MSB = highest bit). */
+function nameToBitMap(varNames: string[]): Record<string, number> {
+  const map: Record<string, number> = {};
+  varNames.forEach((name, i) => {
+    map[name] = varNames.length - 1 - i;
+  });
+  return map;
+}
 
 function sanitizeModule(name: string): string {
   const cleaned = name.replace(/[^A-Za-z0-9_]/g, '_').replace(/^_+|_+$/g, '');
@@ -16,10 +28,10 @@ function sanitizeModule(name: string): string {
   return cleaned;
 }
 
-function termToVerilog(term: Term): string {
+function termToVerilog(term: Term, nameToBit: Record<string, number>): string {
   if (term.literals.length === 0) return "1'b1";
   return term.literals
-    .map((l) => (l.complemented ? `~in[${VAR_BIT[l.name] ?? 0}]` : `in[${VAR_BIT[l.name] ?? 0}]`))
+    .map((l) => (l.complemented ? `~in[${nameToBit[l.name] ?? 0}]` : `in[${nameToBit[l.name] ?? 0}]`))
     .join(' & ');
 }
 
@@ -27,6 +39,8 @@ export interface VerilogOptions {
   moduleName?: string;
   includeTruthTableComment?: boolean;
   mintermLists?: Partial<Record<SegmentName, { ones: number[]; dontCares: number[] }>>;
+  /** Variable names, MSB first (defaults A B C D / A B C D E). */
+  varNames?: string[];
 }
 
 export function generateVerilog(
@@ -35,13 +49,15 @@ export function generateVerilog(
   options: VerilogOptions = {},
 ): string {
   const bits = inputBits;
+  const varNames = options.varNames?.length === bits ? options.varNames : defaultVarNames(bits);
+  const nameToBit = nameToBitMap(varNames);
   const moduleName = sanitizeModule(options.moduleName ?? 'seven_segment_decoder');
   const lines: string[] = [];
 
   lines.push('// ------------------------------------------------------------');
   lines.push('// 7-Segment Display Logic Simulator — generated Verilog');
   lines.push(`// Module: ${moduleName}`);
-  lines.push(`// Input mapping : in[${bits - 1}]..in[0] = ${bits === 5 ? 'E,D,C,B,A' : 'D,C,B,A'} (MSB..LSB)`);
+  lines.push(`// Input mapping : in[${bits - 1}]..in[0] = ${varNames.join(',')} (MSB..LSB)`);
   lines.push('// Output mapping: seg[0]=A seg[1]=B seg[2]=C seg[3]=D seg[4]=E');
   lines.push('//                seg[5]=F seg[6]=G seg[7]=DP');
   lines.push('// Polarity     : active-HIGH (common cathode). For a common-anode');
@@ -71,7 +87,7 @@ export function generateVerilog(
     } else if (terms.length === 1 && terms[0].literals.length === 0) {
       lines.push(`    assign seg[${SEGMENT_INDEX[seg]}] = 1'b1;`);
     } else {
-      const rhs = terms.map(termToVerilog).join(' | ');
+      const rhs = terms.map((t) => termToVerilog(t, nameToBit)).join(' | ');
       lines.push(`    assign seg[${SEGMENT_INDEX[seg]}] = ${rhs};`);
     }
     lines.push('');

@@ -16,7 +16,6 @@ import { CircuitBoard, Download, GraduationCap, Loader2, TriangleAlert } from 'l
 import { useSimulator } from '@/lib/store';
 import { useEngines } from '@/lib/useEngine';
 import { buildCircuitverseProject, type CircuitverseLogicSource } from '@/logic/circuitverse';
-import { inputVarNames } from '@/utils/binary';
 import { downloadText, sanitizeFilename } from '@/utils/download';
 import { toast } from '@/hooks/use-toast';
 import {
@@ -71,6 +70,7 @@ export function CircuitVerseExportDialog({ open, onOpenChange }: {
 }) {
   const projectName = useSimulator((s) => s.projectName);
   const inputBits = useSimulator((s) => s.inputBits);
+  const variableNames = useSimulator((s) => s.variableNames);
   const engines = useEngines();
 
   const [titleOverride, setTitleOverride] = useState<string | null>(null);
@@ -84,7 +84,7 @@ export function CircuitVerseExportDialog({ open, onOpenChange }: {
   const { result, error } = useMemo(() => {
     try {
       return {
-        result: buildCircuitverseProject(inputBits, engines, { title, logicSource }),
+        result: buildCircuitverseProject(inputBits, engines, { title, logicSource, varNames }),
         error: null as string | null,
       };
     } catch (err) {
@@ -93,7 +93,7 @@ export function CircuitVerseExportDialog({ open, onOpenChange }: {
         error: err instanceof Error ? err.message : 'Unknown error while building the CircuitVerse project.',
       };
     }
-  }, [inputBits, engines, title, logicSource]);
+  }, [inputBits, engines, title, logicSource, variableNames]);
 
   const stats = result?.stats ?? null;
 
@@ -282,7 +282,7 @@ export function CircuitVerseExportDialog({ open, onOpenChange }: {
             {stats && (
               <p className="mt-3 border-t pt-2.5 text-[11px] leading-snug text-muted-foreground">
                 Inside the file: {count(stats.inputs, 'input toggle')} labeled{' '}
-                {inputVarNames(inputBits).join(', ')} (MSB → LSB), {count(stats.andGates, 'AND gate')}{' '}
+                {variableNames.join(', ')} (MSB → LSB), {count(stats.andGates, 'AND gate')}{' '}
                 — one per product term, {count(stats.orGates, 'OR gate')} labeled a–g feeding a
                 7-segment display with decimal point, {count(stats.inverters, 'shared NOT gate')}{' '}
                 for complemented inputs, and {count(stats.constants, 'constant')} for always-on/off

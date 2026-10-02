@@ -4,9 +4,12 @@
  */
 import type { Bit, InputWidth } from '@/types/simulator';
 
-/** Variable names for the given input width, MSB first (4-bit: D C B A, 5-bit: E D C B A). */
+/**
+ * Default variable names for the given input width, MSB first
+ * (4-bit: A B C D, 5-bit: A B C D E — A = MSB). Renamable in the truth table.
+ */
 export function inputVarNames(bits: InputWidth): string[] {
-  return bits === 5 ? ['E', 'D', 'C', 'B', 'A'] : ['D', 'C', 'B', 'A'];
+  return bits === 5 ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
 }
 
 /** Weight (2^k) of the variable at `varIndex` (0 = MSB). */

@@ -15,10 +15,13 @@ import type { InputWidth } from '@/types/simulator';
 
 const COMBINING_OVERLINE = '\u0305';
 
-/** Variable (MSB-first) name for bit position `bitPos` (LSB = position 0). */
-function varAtBit(numVars: number, bitPos: number): string {
-  const names = numVars === 5 ? ['E', 'D', 'C', 'B', 'A'] : ['D', 'C', 'B', 'A'];
-  return names[numVars - 1 - bitPos];
+/**
+ * Variable name for bit position `bitPos` (LSB = position 0).
+ * `varNames` is MSB-first and optional — defaults to A B C (D) (E) with A = MSB.
+ */
+function varAtBit(numVars: number, bitPos: number, varNames?: string[]): string {
+  const names = varNames ?? inputVarNames(numVars === 5 ? 5 : 4);
+  return names[numVars - 1 - bitPos] ?? '?';
 }
 
 export function literalToString(l: Literal, notation: Notation): string {
@@ -73,11 +76,11 @@ export function posToString(terms: Term[], notation: Notation): string {
 }
 
 /** SOP term for an implicant: fixed bit 1 -> variable, fixed bit 0 -> complement. */
-export function implicantToSopTerm(imp: Implicant, numVars: number): Term {
+export function implicantToSopTerm(imp: Implicant, numVars: number, varNames?: string[]): Term {
   const literals: Literal[] = [];
   for (let bitPos = 0; bitPos < numVars; bitPos++) {
     if (imp.mask & (1 << bitPos)) {
-      literals.push({ name: varAtBit(numVars, bitPos), complemented: (imp.bits & (1 << bitPos)) === 0 });
+      literals.push({ name: varAtBit(numVars, bitPos, varNames), complemented: (imp.bits & (1 << bitPos)) === 0 });
     }
   }
   // Order MSB-first for natural reading.
@@ -86,11 +89,11 @@ export function implicantToSopTerm(imp: Implicant, numVars: number): Term {
 }
 
 /** POS sum term via De Morgan on the SOP complement: fixed bit 1 -> complement. */
-export function implicantToPosTerm(imp: Implicant, numVars: number): Term {
+export function implicantToPosTerm(imp: Implicant, numVars: number, varNames?: string[]): Term {
   const literals: Literal[] = [];
   for (let bitPos = 0; bitPos < numVars; bitPos++) {
     if (imp.mask & (1 << bitPos)) {
-      literals.push({ name: varAtBit(numVars, bitPos), complemented: ((imp.bits >> bitPos) & 1) === 1 });
+      literals.push({ name: varAtBit(numVars, bitPos, varNames), complemented: ((imp.bits >> bitPos) & 1) === 1 });
     }
   }
   literals.reverse();
@@ -98,19 +101,19 @@ export function implicantToPosTerm(imp: Implicant, numVars: number): Term {
 }
 
 /** Canonical SOP minterm for a specific input combination. */
-export function mintermToTerm(minterm: number, numVars: number): Term {
+export function mintermToTerm(minterm: number, numVars: number, varNames?: string[]): Term {
   const literals: Literal[] = [];
   for (let i = numVars - 1; i >= 0; i--) {
-    literals.push({ name: varAtBit(numVars, i), complemented: (minterm & (1 << i)) === 0 });
+    literals.push({ name: varAtBit(numVars, i, varNames), complemented: (minterm & (1 << i)) === 0 });
   }
   return { literals };
 }
 
 /** Canonical POS maxterm for a specific input combination. */
-export function maxtermToTerm(minterm: number, numVars: number): Term {
+export function maxtermToTerm(minterm: number, numVars: number, varNames?: string[]): Term {
   const literals: Literal[] = [];
   for (let i = numVars - 1; i >= 0; i--) {
-    literals.push({ name: varAtBit(numVars, i), complemented: (minterm & (1 << i)) === 1 });
+    literals.push({ name: varAtBit(numVars, i, varNames), complemented: (minterm & (1 << i)) === 1 });
   }
   return { literals };
 }
@@ -137,7 +140,7 @@ export function dontCareNotation(values: number[]): string {
   return `d(${values.join(', ')})`;
 }
 
-/** Variable names (MSB first) for the input width — re-exported convenience. */
+/** Variable names (MSB first, A = MSB) for the input width — re-exported convenience. */
 export function expressionVarNames(bits: InputWidth): string[] {
   return inputVarNames(bits);
 }

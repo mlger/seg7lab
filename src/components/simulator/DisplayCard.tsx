@@ -38,6 +38,7 @@ export function DisplayCard({ svgRef }: { svgRef?: React.RefObject<SVGSVGElement
   const resetDisplaySettings = useSimulator((s) => s.resetDisplaySettings);
   const inputBits = useSimulator((s) => s.inputBits);
   const fontStart = useSimulator((s) => s.fontStart);
+  const variableNames = useSimulator((s) => s.variableNames);
   const tableStartCode = useSimulator((s) => s.tableStartCode);
   const customFont = useSimulator((s) => s.customFont);
   const activeFontId = useSimulator((s) => s.activeFontId);
@@ -251,7 +252,7 @@ export function DisplayCard({ svgRef }: { svgRef?: React.RefObject<SVGSVGElement
           <ExplainBlock title={`Why does the display look like this? (input m${current.input})`}>
             <p>
               The input <strong className="font-mono">{current.binary}</strong> ({current.bits}-bit,
-              variables {current.bits === 5 ? 'E D C B A' : 'D C B A'}) selects truth-table row{' '}
+              variables {variableNames.join(' ')}) selects truth-table row{' '}
               <strong className="font-mono">m{current.input}</strong>. That row defines the logic level of
               each segment:
             </p>

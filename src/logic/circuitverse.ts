@@ -43,6 +43,8 @@ export interface CircuitverseExportOptions {
    * 'direct'    = canonical minterm SOP built from engines[seg].ones.
    */
   logicSource: CircuitverseLogicSource;
+  /** Custom variable names (MSB first) for input labels; defaults to A B C (D) (E). */
+  varNames?: string[];
 }
 
 export interface CircuitverseSegmentStat {
@@ -293,7 +295,9 @@ class CircuitverseBuilder {
 
   constructor(inputBits: InputWidth, options: CircuitverseExportOptions) {
     this.inputBits = inputBits;
-    this.varNames = inputVarNames(inputBits);
+    this.varNames = options.varNames?.length === inputBits
+      ? options.varNames
+      : inputVarNames(inputBits);
     this.options = options;
   }
 

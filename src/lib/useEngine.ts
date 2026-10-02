@@ -16,9 +16,10 @@ export function useEngines(): SegmentEngineMap {
   const truthTable = useSimulator((s) => s.truthTable);
   const coverExcluded = useSimulator((s) => s.coverExcluded);
   const coverAdded = useSimulator((s) => s.coverAdded);
+  const variableNames = useSimulator((s) => s.variableNames);
   return useMemo(
-    () => computeEngines(truthTable, coverExcluded, coverAdded),
-    [truthTable, coverExcluded, coverAdded],
+    () => computeEngines(truthTable, coverExcluded, coverAdded, variableNames),
+    [truthTable, coverExcluded, coverAdded, variableNames],
   );
 }
 

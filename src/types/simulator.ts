@@ -2,8 +2,9 @@
  * Core type definitions for the 7-Segment Display Logic Simulator.
  *
  * Naming conventions (single source of truth):
- *  - Input variables, 4-bit mode: D C B A  (D = MSB, weight 8)
- *  - Input variables, 5-bit mode: E D C B A (E = MSB, weight 16)
+ *  - Input variables, 4-bit mode: A B C D  (A = MSB, weight 8)
+ *  - Input variables, 5-bit mode: A B C D E (A = MSB, weight 16)
+ *    (names are editable in the truth table and persisted with the project)
  *  - Segment outputs: A B C D E F G + DP (decimal point), standard placement:
  *
  *        ── A ──
@@ -157,6 +158,8 @@ export interface ProjectData {
   coverAdded: Partial<Record<SegmentName, Partial<Record<CoverForm, string[]>>>>;
   /** First input code of the truth table's row order (e.g. 1 → starts at 0001, wraps 0000 last). */
   tableStartCode?: number;
+  /** Custom variable names, MSB first (A = MSB by default). Renamed in the truth table. */
+  variableNames?: string[];
   /** Index of the first glyph of the font window (FONT preset). */
   fontStart?: number;
   /** User-imported font; when present it replaces the built-in chart font. */

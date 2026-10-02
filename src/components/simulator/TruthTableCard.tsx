@@ -1,10 +1,17 @@
 /**
  * Truth table: auto-generated for the selected input width, fully editable
- * (click an output cell to cycle 0 → 1 → X). Clicking a row selects that input.
+ * (click an output cell to cycle 0 → 1 → X, or click a segment directly on the
+ * row's preview glyph). Clicking a row selects that input.
  *
  * Features:
- *  - Live mini 7-segment preview of every row (derived from the table itself).
- *  - Row order can start from any code (e.g. DCBA = 0001, wrapping around).
+ *  - Live mini 7-segment preview of every row (derived from the table itself),
+ *    shown after the Hex column; its segments are clickable to toggle cells.
+ *  - Drag a row's preview glyph onto another row to copy its output pattern —
+ *    inputs are excluded, they always stay untouched.
+ *  - Input variables default to A B C D / A B C D E (A = MSB) and can be
+ *    renamed by clicking a variable header — names flow through expressions,
+ *    K-map, circuit and every export.
+ *  - Row order can start from any code (e.g. ABCD = 0001, wrapping around).
  *  - Shift tools: rotate one row's values, one segment's column, or the whole
  *    table (all rows / all columns) — with one-level undo.
  *  - FONT preset window controls (which glyph starts the mapping).
@@ -12,7 +19,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Table as TableIcon, ArrowLeftRight, ArrowUpDown, Undo2, Type as TypeIcon, RotateCcw } from 'lucide-react';
+import { Table as TableIcon, ArrowLeftRight, ArrowUpDown, Undo2, Type as TypeIcon, RotateCcw, Pencil } from 'lucide-react';
 import { useSimulator, activeFontGlyphs, resolveFontPreset } from '@/lib/store';
 import { useEngines, useCurrentInput, usePresetModified, useAppliedTablePreset } from '@/lib/useEngine';
 import { ExplainBlock } from './ExplainBlock';
@@ -26,9 +33,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { SEGMENT_NAMES, type SegmentOutput } from '@/types/simulator';
-import { formatHex } from '@/utils/binary';
+import { formatHex, inputVarNames } from '@/utils/binary';
 import { fontCharAt, listedCodes, FONT_GROUPS } from '@/logic/font';
 import { valueToChar } from '@/logic/truthTable';
+import { toast } from '@/hooks/use-toast';
 
 function cellColor(v: SegmentOutput): string {
   return v === 1
@@ -65,6 +73,10 @@ export function TruthTableCard() {
   const shiftAllColumns = useSimulator((s) => s.shiftAllColumns);
   const undoShift = useSimulator((s) => s.undoShift);
   const undoSnapshot = useSimulator((s) => s.undoSnapshot);
+  const toggleSegmentOnDisplay = useSimulator((s) => s.toggleSegmentOnDisplay);
+  const setRowPattern = useSimulator((s) => s.setRowPattern);
+  const setVariableName = useSimulator((s) => s.setVariableName);
+  const resetVariableNames = useSimulator((s) => s.resetVariableNames);
   const engines = useEngines();
   const current = useCurrentInput();
   const modified = usePresetModified();
@@ -72,10 +84,48 @@ export function TruthTableCard() {
   const rowRefs = useRef<Record<number, HTMLTableRowElement | null>>({});
   const [startCodeText, setStartCodeText] = useState<string | null>(null);
 
-  const varNames = inputBits === 5 ? ['E', 'D', 'C', 'B', 'A'] : ['D', 'C', 'B', 'A'];
+  /* ---- inline variable-name editing ---- */
+  const [editingVar, setEditingVar] = useState<number | null>(null);
+  const [varDraft, setVarDraft] = useState('');
+
+  /* ---- row drag-and-drop (copy output pattern; inputs excluded) ---- */
+  const [dragRow, setDragRow] = useState<number | null>(null);
+  const [dropRow, setDropRow] = useState<number | null>(null);
+
+  const varNames = useSimulator((s) => s.variableNames);
+  const namesCustomized = varNames.join('') !== inputVarNames(inputBits).join('');
   const glyphs = activeFontGlyphs(customFont, activeFontId);
   const activeFontName = resolveFontPreset(activeFontId, presetLibrary)?.name ?? 'Chart font';
   const fontMode = displayMode === 'font';
+
+  const commitVarName = (index: number, raw: string) => {
+    setEditingVar(null);
+    const clean = raw.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 3);
+    if (!clean || clean === varNames[index]) return;
+    if (varNames.some((n, i) => i !== index && n === clean)) {
+      toast({
+        title: 'Name already in use',
+        description: `“${clean}” is taken by another variable — names must stay unique.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+    setVariableName(index, clean);
+  };
+
+  const handleRowDrop = (e: React.DragEvent<HTMLTableRowElement>, targetInput: number) => {
+    e.preventDefault();
+    setDropRow(null);
+    const source = Number(e.dataTransfer.getData('text/x-sevenseg-row'));
+    if (!Number.isInteger(source) || source === targetInput || source < 0 || source >= table.rows.length) return;
+    const sourceRow = table.rows.find((r) => r.input === source);
+    if (!sourceRow) return;
+    setRowPattern(targetInput, sourceRow.outputs);
+    toast({
+      title: 'Pattern copied',
+      description: `m${source} → m${targetInput}: segment outputs copied, inputs excluded (row stays ${targetInput.toString(2).padStart(inputBits, '0')}).`,
+    });
+  };
 
   /** Rows in listed order (from tableStartCode, wrapping). */
   const orderedRows = useMemo(
@@ -326,28 +376,72 @@ export function TruthTableCard() {
                   colSpan={varNames.length + 3}
                   className="border-r border-border/70 bg-muted px-3 py-1.5 text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground"
                 >
-                  Inputs
+                  <span className="inline-flex items-center gap-1.5">
+                    Inputs
+                    {namesCustomized && (
+                      <button
+                        type="button"
+                        onClick={resetVariableNames}
+                        className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 font-mono text-[10px] font-normal normal-case tracking-normal transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        title={`Reset variable names to ${inputVarNames(inputBits).join(' ')}`}
+                        aria-label="Reset variable names to defaults"
+                      >
+                        <RotateCcw className="h-2.5 w-2.5" aria-hidden /> {varNames.join('')}
+                      </button>
+                    )}
+                  </span>
                 </TableHead>
                 <TableHead
-                  colSpan={SEGMENT_NAMES.length}
+                  colSpan={SEGMENT_NAMES.length + 1}
                   className="bg-muted px-3 py-1.5 text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground"
                 >
                   Segment outputs (click to edit: 0 → 1 → X)
                 </TableHead>
               </TableRow>
               <TableRow className="bg-muted/80 hover:bg-muted/80">
-                <TableHead className="bg-muted/80 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                  Preview
-                </TableHead>
-                {varNames.map((v) => (
-                  <TableHead key={v} className="bg-muted/80 px-2 py-1 text-center font-mono text-xs">
-                    {v}
+                {varNames.map((v, i) => (
+                  <TableHead key={`${i}-${v}`} className="bg-muted/80 px-1 py-1 text-center font-mono text-xs">
+                    {editingVar === i ? (
+                      <Input
+                        autoFocus
+                        value={varDraft}
+                        onChange={(e) => setVarDraft(e.target.value.slice(0, 8))}
+                        onBlur={() => commitVarName(i, varDraft)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') commitVarName(i, varDraft);
+                          if (e.key === 'Escape') setEditingVar(null);
+                        }}
+                        className="h-6 w-12 px-1 text-center font-mono text-xs"
+                        aria-label={`Rename variable ${v}`}
+                        title="Enter to apply · Escape to cancel"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingVar(i);
+                          setVarDraft(v);
+                        }}
+                        className="group/var inline-flex items-center gap-0.5 rounded border-b border-dashed border-muted-foreground/60 px-1.5 py-0.5 font-mono text-xs transition-colors hover:border-foreground/60 hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        title={`Rename variable ${v} (weight ${1 << (inputBits - 1 - i)}) — names flow into expressions, K-map, circuit and exports`}
+                        aria-label={`Rename variable ${v}`}
+                      >
+                        {v}
+                        <Pencil className="h-2.5 w-2.5 opacity-0 transition-opacity group-hover/var:opacity-60" aria-hidden />
+                      </button>
+                    )}
                   </TableHead>
                 ))}
                 <TableHead className="bg-muted/80 px-2 py-1 text-center font-mono text-xs">Dec</TableHead>
                 <TableHead className="bg-muted/80 px-2 py-1 text-center font-mono text-xs">Hex</TableHead>
                 <TableHead className="border-r border-border/70 bg-muted/80 px-2 py-1 text-center font-mono text-xs">
                   {fontMode ? 'Char' : '·'}
+                </TableHead>
+                <TableHead
+                  className="bg-muted/80 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground"
+                  title="Live pattern preview — click a segment to toggle it; drag onto another row to copy the pattern (inputs stay unchanged)"
+                >
+                  Preview
                 </TableHead>
                 {SEGMENT_NAMES.map((seg) => (
                   <TableHead key={seg} className="bg-muted/80 p-0.5 text-center">
@@ -374,25 +468,34 @@ export function TruthTableCard() {
                 const active = row.input === currentInput;
                 const bits = row.input.toString(2).padStart(inputBits, '0');
                 const char = rowChar(row.input);
+                const isDropTarget = dropRow === row.input && dragRow !== null && dragRow !== row.input;
                 return (
                   <TableRow
                     key={row.input}
                     ref={(el) => {
                       rowRefs.current[row.input] = el;
                     }}
-                    className={cn('cursor-pointer', active ? 'bg-primary/10' : 'hover:bg-muted/50')}
+                    className={cn(
+                      'cursor-pointer',
+                      active ? 'bg-primary/10' : 'hover:bg-muted/50',
+                      dragRow === row.input && 'opacity-50',
+                      isDropTarget && 'bg-primary/15 ring-2 ring-inset ring-primary/50',
+                    )}
                     onClick={() => setInput(row.input)}
                     aria-label={`Select input row ${row.input}`}
+                    onDragOver={(e) => {
+                      if (!e.dataTransfer.types.includes('text/x-sevenseg-row')) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'copy';
+                      if (dropRow !== row.input) setDropRow(row.input);
+                    }}
+                    onDragLeave={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                        setDropRow((d) => (d === row.input ? null : d));
+                      }
+                    }}
+                    onDrop={(e) => handleRowDrop(e, row.input)}
                   >
-                    <TableCell className="px-1 py-0.5 text-center">
-                      <div className="flex flex-col items-center leading-none">
-                        <GlyphPreview
-                          outputs={row.outputs}
-                          className="h-8"
-                          label={`Preview of row ${row.input}${char ? ` (${char})` : ''}`}
-                        />
-                      </div>
-                    </TableCell>
                     {[...bits].map((b, i) => (
                       <TableCell key={i} className="px-2 py-1 text-center font-mono text-xs tabular-nums">
                         {b}
@@ -406,6 +509,33 @@ export function TruthTableCard() {
                     </TableCell>
                     <TableCell className="border-r border-border/70 px-2 py-1 text-center font-mono text-xs">
                       {char === null ? '' : char === ' ' ? '␠' : char}
+                    </TableCell>
+                    <TableCell className="px-1 py-0.5 text-center">
+                      <div
+                        className="group relative flex cursor-grab flex-col items-center leading-none active:cursor-grabbing"
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/x-sevenseg-row', String(row.input));
+                          e.dataTransfer.effectAllowed = 'copy';
+                          setDragRow(row.input);
+                        }}
+                        onDragEnd={() => {
+                          setDragRow(null);
+                          setDropRow(null);
+                        }}
+                        title={`Pattern of m${row.input} — click a segment to toggle it (0 ↔ 1); drag onto another row to copy this pattern (inputs are excluded and stay unchanged)`}
+                      >
+                        <GlyphPreview
+                          outputs={row.outputs}
+                          interactive
+                          onSegmentClick={(seg) => {
+                            setInput(row.input);
+                            toggleSegmentOnDisplay(row.input, seg);
+                          }}
+                          className="relative z-0 h-10 origin-center transition-transform duration-150 ease-out group-hover:z-20 group-hover:scale-[1.65]"
+                          label={`Pattern of row ${row.input}${char ? ` (${char})` : ''} — segments clickable`}
+                        />
+                      </div>
                     </TableCell>
                     {SEGMENT_NAMES.map((seg) => {
                       const v = row.outputs[seg];
@@ -440,8 +570,11 @@ export function TruthTableCard() {
         </div>
 
         <p className="text-[11px] leading-snug text-muted-foreground">
-          Every row shows a <span className="font-medium">live preview</span> of what the display
-          renders for that input. Rows are listed starting from{' '}
+          Every row shows a <span className="font-medium">live preview</span> (after the Hex column) of
+          what the display renders for that input — its segments are directly clickable to toggle
+          0 ↔ 1, and dragging a preview onto another row copies that pattern (inputs are excluded
+          and never change). Input variables are <span className="font-mono">{varNames.join(' ')}</span> —
+          click a variable header to rename it. Rows are listed starting from{' '}
           <span className="font-mono">{tableStartCode.toString(2).padStart(inputBits, '0')}</span>
           {tableStartCode !== 0 && ' (wrapping around)'}. The shift tools rotate values within the
           selected row, within the selected segment column (click a segment header to pick it), or
@@ -474,6 +607,21 @@ export function TruthTableCard() {
               <span className="font-mono">d({engines[activeSegment].dontCares.join(', ') || '—'})</span>.
               Minterms are rows where the output is 1; the minimizer may treat X rows as either 0 or 1,
               whichever yields the simplest logic.
+            </p>
+            <p>
+              The preview column is a direct editor: click any segment of a row&apos;s glyph to toggle
+              that single cell between 0 and 1 (a don&apos;t-care becomes 1) — the same edit the big
+              display offers, one row at a time. Dragging a preview glyph onto another row copies
+              its segment outputs to the target row; the input columns are excluded from the drag,
+              so the mapping (which input shows which pattern) is what changes, never the inputs
+              themselves.
+            </p>
+            <p>
+              Variables default to <span className="font-mono">{inputVarNames(inputBits).join(' ')}</span>{' '}
+              (MSB first, {varNames[0]} has weight {1 << (inputBits - 1)}). Click a variable header in
+              the table to rename it (A-Z, 0-9, _; up to 3 characters, unique) — the new name
+              immediately appears in the Boolean expressions, K-map labels, circuit inputs, parser
+              and every file export. When the input width changes, names reset to the defaults.
             </p>
             {fontMode && (
               <p>

@@ -28,6 +28,7 @@ export function computeSegmentEngine(
   table: TruthTable,
   segment: SegmentName,
   overrides: Partial<Record<CoverForm, { added?: string[]; excluded?: string[] }>>,
+  varNames?: string[],
 ): SegmentEngine {
   const { ones, zeros, dontCares } = segmentSets(table, segment);
   const numVars = table.inputBits;
@@ -38,12 +39,12 @@ export function computeSegmentEngine(
   const kmap = buildKMap(table.inputBits, (m) => {
     const row = table.rows[m];
     return row ? row.outputs[segment] : 0;
-  });
+  }, varNames);
 
   const sopOverrides = overrides.sop ?? {};
   const posOverrides = overrides.pos ?? {};
-  const sopGroups = coverToGroups(sop, kmap, 'sop', sopOverrides);
-  const posGroups = coverToGroups(pos, kmap, 'pos', posOverrides);
+  const sopGroups = coverToGroups(sop, kmap, 'sop', sopOverrides, varNames);
+  const posGroups = coverToGroups(pos, kmap, 'pos', posOverrides, varNames);
 
   // Active expressions respect user cover exclusions and additions.
   const selected = (result: MinimizeResult, form: CoverForm): PrimeInfo[] => {
@@ -55,8 +56,8 @@ export function computeSegmentEngine(
   };
   const activeSopPrimes = selected(sop, 'sop');
   const activePosPrimes = selected(pos, 'pos');
-  const activeSopTerms: Term[] = activeSopPrimes.map((p) => implicantToSopTerm(p, numVars));
-  const activePosTerms: Term[] = activePosPrimes.map((p) => implicantToPosTerm(p, numVars));
+  const activeSopTerms: Term[] = activeSopPrimes.map((p) => implicantToSopTerm(p, numVars, varNames));
+  const activePosTerms: Term[] = activePosPrimes.map((p) => implicantToPosTerm(p, numVars, varNames));
 
   const sopCovered = new Set(activeSopPrimes.flatMap((p) => p.coveredOnes));
   const posCovered = new Set(activePosPrimes.flatMap((p) => p.coveredOnes));
@@ -76,8 +77,8 @@ export function computeSegmentEngine(
     uncoveredSop: ones.filter((m) => !sopCovered.has(m)),
     uncoveredPos: zeros.filter((m) => !posCovered.has(m)),
     stats: {
-      canonicalSop: termStats(ones.map((m) => mintermToTerm(m, numVars))),
-      canonicalPos: termStats(zeros.map((m) => maxtermToTerm(m, numVars))),
+      canonicalSop: termStats(ones.map((m) => mintermToTerm(m, numVars, varNames))),
+      canonicalPos: termStats(zeros.map((m) => maxtermToTerm(m, numVars, varNames))),
       simplifiedSop: termStats(activeSopTerms),
       simplifiedPos: termStats(activePosTerms),
     },
@@ -90,6 +91,7 @@ export function computeEngines(
   truthTable: TruthTable,
   coverExcluded: ProjectData['coverExcluded'],
   coverAdded: ProjectData['coverAdded'],
+  varNames?: string[],
 ): SegmentEngineMap {
   const result = {} as SegmentEngineMap;
   for (const seg of SEGMENT_NAMES) {
@@ -99,7 +101,7 @@ export function computeEngines(
       const added = coverAdded[seg]?.[form] ?? [];
       if (excluded.length || added.length) merged[form] = { added, excluded };
     }
-    result[seg] = computeSegmentEngine(truthTable, seg, merged);
+    result[seg] = computeSegmentEngine(truthTable, seg, merged, varNames);
   }
   return result;
 }

@@ -1,17 +1,18 @@
 /**
  * Karnaugh map construction with correct Gray-code ordering.
  *
- * 4-variable map (inputs D C B A, D = MSB):
- *              BA (cols)
+ * 4-variable map (inputs A B C D, A = MSB):
+ *              CD (cols)
  *              00  01  11  10
- *      DC(rows) 00
+ *      AB(rows) 00
  *              01
  *              11
  *              10
- *  minterm = D·8 + C·4 + B·2 + A·1  = (grayRow << 2) | grayCol
+ *  minterm = A·8 + B·4 + C·2 + D·1  = (grayRow << 2) | grayCol
  *
- * 5-variable map: two 4-variable planes — E = 0 (left) and E = 1 (right),
- * E = MSB with weight 16. Groups may span both planes (mirror adjacency).
+ * 5-variable map: two 4-variable planes — A = 0 (left) and A = 1 (right),
+ * A = MSB with weight 16. Groups may span both planes (mirror adjacency).
+ * Variable names are customizable — defaults A B C D (E), MSB first.
  */
 import type {
   KMapCell,
@@ -22,16 +23,20 @@ import type {
   SegmentOutput,
   Term,
 } from '@/types/simulator';
-import { grayAxisOrder } from '@/utils/binary';
+import { grayAxisOrder, inputVarNames } from '@/utils/binary';
 import { implicantToSopTerm, implicantToPosTerm } from './expressions';
 
 export function buildKMap(
   bits: InputWidth,
   getValue: (minterm: number) => SegmentOutput,
+  varNames?: string[],
 ): KMapData {
-  const rowVars = bits === 5 ? ['D', 'C'] : ['D', 'C'];
-  const colVars = ['B', 'A'];
-  const planeVar = bits === 5 ? 'E' : null;
+  const names = varNames ?? inputVarNames(bits);
+  // MSB-first names: 4-bit rows = n0 n1, cols = n2 n3;
+  // 5-bit plane = MSB (weight 16), rows = n1 n2, cols = n3 n4.
+  const rowVars = bits === 5 ? names.slice(1, 3) : names.slice(0, 2);
+  const colVars = bits === 5 ? names.slice(3, 5) : names.slice(2, 4);
+  const planeVar = bits === 5 ? (names[0] ?? 'A') : null;
   const rowOrder = grayAxisOrder(2); // [0, 1, 3, 2]
   const colOrder = grayAxisOrder(2);
   const planeCount = bits === 5 ? 2 : 1;
@@ -71,6 +76,7 @@ export function coverToGroups(
   kmap: KMapData,
   form: 'sop' | 'pos',
   overrides: { added?: string[]; excluded?: string[] } = {},
+  varNames?: string[],
 ): KMapGroup[] {
   const excludedSet = new Set(overrides.excluded ?? []);
   const addedSet = new Set(overrides.added ?? []);
@@ -91,15 +97,14 @@ export function coverToGroups(
     }
     const term: Term =
       form === 'sop'
-        ? implicantToSopTerm(prime, kmap.numVars)
-        : implicantToPosTerm(prime, kmap.numVars);
+        ? implicantToSopTerm(prime, kmap.numVars, varNames)
+        : implicantToPosTerm(prime, kmap.numVars, varNames);
 
+    // Eliminated-variable names: bitPos 0 = LSB → last MSB-first name.
+    const names = varNames ?? inputVarNames(kmap.numVars === 5 ? 5 : 4);
     const eliminatedVars: string[] = [];
-    const varNamesAtBit: Record<number, string> = {
-      0: 'A', 1: 'B', 2: 'C', 3: 'D', 4: 'E',
-    };
     for (let bitPos = 0; bitPos < kmap.numVars; bitPos++) {
-      if (!(prime.mask & (1 << bitPos))) eliminatedVars.push(varNamesAtBit[bitPos]);
+      if (!(prime.mask & (1 << bitPos))) eliminatedVars.push(names[kmap.numVars - 1 - bitPos] ?? '?');
     }
 
     return {

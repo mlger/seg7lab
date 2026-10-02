@@ -11,7 +11,7 @@
  */
 'use client';
 
-import { useId, useMemo } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { HEX_PATTERNS } from '@/logic/truthTable';
 import { isSegmentLit, isSegmentUndefined } from '@/logic/decoder';
@@ -226,26 +226,47 @@ export function BitStripDisplay({
   );
 }
 
+/** Invisible, generously sized click zones for preview glyphs (viewBox coords). */
+const HIT_ZONES: Record<Exclude<SegmentName, 'DP'>, { x: number; y: number; w: number; h: number }> = {
+  A: { x: 20, y: 0, w: 120, h: 32 },
+  F: { x: 0, y: 24, w: 36, h: 88 },
+  B: { x: 128, y: 24, w: 36, h: 88 },
+  E: { x: 0, y: 128, w: 36, h: 88 },
+  C: { x: 128, y: 128, w: 36, h: 88 },
+  G: { x: 20, y: 104, w: 120, h: 32 },
+  D: { x: 20, y: 208, w: 120, h: 32 },
+};
+
 /**
  * Tiny bare glyph (no housing, no glow filter) for truth-table row previews.
  * Renders lit segments in amber, unlit in a faint outline and don't-cares dashed,
  * so 16–32 instances stay lightweight. Live: derived from the truth table.
  * viewBox height 240 = full A..D geometry span (y 8–232) + stroke margins —
  * a shorter box would clip segment D off the bottom of every preview.
+ *
+ * Optional interactivity: invisible per-segment hit zones let the user click a
+ * segment directly in the table row to toggle it (DP is omitted here — edit it
+ * via the output cell). Keyboard users edit via the a–g/DP cells instead, so the
+ * hit zones stay out of the tab order.
  */
 export function GlyphPreview({
   outputs,
   className,
   label,
+  interactive = false,
+  onSegmentClick,
 }: {
   outputs: SegmentPatternX | null;
   className?: string;
   label?: string;
+  interactive?: boolean;
+  onSegmentClick?: (segment: SegmentName) => void;
 }) {
+  const [hover, setHover] = useState<SegmentName | null>(null);
   return (
     <svg
       viewBox="0 0 164 240"
-      className={cn('h-9 w-auto', className)}
+      className={cn('h-9 w-auto', interactive && 'cursor-pointer', className)}
       role="img"
       aria-label={label ?? 'Row pattern preview'}
     >
@@ -256,20 +277,46 @@ export function GlyphPreview({
           const v = outputs?.[seg];
           const lit = v === 1;
           const undef = v === 'X';
+          const hovered = interactive && hover === seg;
           return (
             <polygon
               key={seg}
               points={geo.points}
-              fill={lit ? '#f59e0b' : 'transparent'}
-              fillOpacity={lit ? 0.92 : 0}
-              stroke={undef ? '#d97706' : '#d6d3d1'}
-              strokeWidth={undef ? 5 : 4}
-              strokeOpacity={undef ? 0.9 : 0.66}
-              strokeDasharray={undef ? '10 7' : undefined}
+              fill={lit ? '#f59e0b' : hovered ? 'rgba(245,158,11,0.18)' : 'transparent'}
+              fillOpacity={lit ? 0.92 : hovered ? 1 : 0}
+              stroke={hovered ? '#b45309' : undef ? '#d97706' : '#d6d3d1'}
+              strokeWidth={hovered ? 6 : undef ? 5 : 4}
+              strokeOpacity={hovered ? 1 : undef ? 0.9 : 0.66}
+              strokeDasharray={undef && !hovered ? '10 7' : undefined}
               strokeLinejoin="round"
             />
           );
         })}
+        {interactive && (
+          <g>
+            {(['A', 'F', 'B', 'E', 'C', 'G', 'D'] as const).map((seg) => {
+              const zone = HIT_ZONES[seg];
+              const v = outputs?.[seg];
+              return (
+                <rect
+                  key={seg}
+                  x={zone.x}
+                  y={zone.y}
+                  width={zone.w}
+                  height={zone.h}
+                  fill="transparent"
+                  className="cursor-pointer"
+                  aria-hidden
+                  onMouseEnter={() => setHover(seg)}
+                  onMouseLeave={() => setHover((h) => (h === seg ? null : h))}
+                  onClick={() => onSegmentClick?.(seg)}
+                >
+                  <title>{`Segment ${seg} = ${v ?? '?'} — click to toggle`}</title>
+                </rect>
+              );
+            })}
+          </g>
+        )}
       </g>
     </svg>
   );

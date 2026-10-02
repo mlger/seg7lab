@@ -46,7 +46,7 @@ export function CustomCharacterCard() {
   const glyphs = activeFontGlyphs(customFont, activeFontId);
 
   const editingRow = editing !== null ? table.rows.find((r) => r.input === editing) : null;
-  const varNames = inputBits === 5 ? ['E', 'D', 'C', 'B', 'A'] : ['D', 'C', 'B', 'A'];
+  const varNames = useSimulator((s) => s.variableNames);
   const invalidFrom = displayMode === 'hex' && inputBits === 5 ? 16 : 10;
 
   /** Label for an input: font glyph in font mode, else the hex-style guess. */

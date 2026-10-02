@@ -106,7 +106,7 @@ export function InputControlsCard() {
   const toggleBit = useSimulator((s) => s.toggleBit);
   const incrementInput = useSimulator((s) => s.incrementInput);
   const decrementInput = useSimulator((s) => s.decrementInput);
-  const varNames = current.bits === 5 ? ['E', 'D', 'C', 'B', 'A'] : ['D', 'C', 'B', 'A'];
+  const varNames = useSimulator((s) => s.variableNames);
 
   return (
     <Card>

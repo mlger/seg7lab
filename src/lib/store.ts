@@ -53,7 +53,7 @@ import {
   validateLibraryTablePreset,
 } from '@/logic/presets';
 import { patternToChar } from '@/logic/truthTable';
-import { maxvalue } from '@/utils/binary';
+import { inputVarNames, maxvalue } from '@/utils/binary';
 import type { CustomFont } from '@/types/simulator';
 
 const WORKSPACE_KEY = 'sevenseg-workspace-v1';
@@ -75,6 +75,8 @@ export interface SimulatorState {
   coverAdded: ProjectData['coverAdded'];
   /** First input code of the truth table row order (0 default; e.g. 1 → starts at 0001). */
   tableStartCode: number;
+  /** Variable names, MSB first (defaults A B C D / A B C D E; A = MSB). Editable in the truth table. */
+  variableNames: string[];
   /** First glyph index of the font window (FONT preset). */
   fontStart: number;
   /** Imported font, when present (replaces the built-in chart font). */
@@ -110,6 +112,11 @@ export interface SimulatorState {
   toggleBit: (msbIndex: number) => void;
   incrementInput: () => void;
   decrementInput: () => void;
+
+  /** Rename the variable at `index` (0 = MSB). Sanitized: A-Z, 0-9, _; ≤ 3 chars; unique. */
+  setVariableName: (index: number, name: string) => void;
+  /** Restore default variable names for the current input width. */
+  resetVariableNames: () => void;
 
   setDisplayMode: (mode: DisplayMode) => void;
   setInvalidBehavior: (behavior: InvalidBehavior) => void;
@@ -316,6 +323,7 @@ export const useSimulator = create<SimulatorState>((set, get) => ({
   coverExcluded: {},
   coverAdded: {},
   tableStartCode: 0,
+  variableNames: inputVarNames(defaults.inputBits),
   fontStart: 0,
   customFont: null,
   activeFontId: 'builtin:chart',
@@ -358,6 +366,7 @@ export const useSimulator = create<SimulatorState>((set, get) => ({
             coverExcluded: data.coverExcluded,
             coverAdded: data.coverAdded ?? {},
             tableStartCode: data.tableStartCode ?? 0,
+            variableNames: data.variableNames ?? inputVarNames(data.inputBits),
             fontStart: data.fontStart ?? 0,
             customFont: 'customFont' in fontPatch ? fontPatch.customFont! : (data.customFont ?? null),
             activeFontId: fontPatch.activeFontId ?? activeFontId,
@@ -387,6 +396,7 @@ export const useSimulator = create<SimulatorState>((set, get) => ({
     coverExcluded: get().coverExcluded,
     coverAdded: get().coverAdded,
     tableStartCode: get().tableStartCode,
+    variableNames: get().variableNames,
     fontStart: get().fontStart,
     ...(get().customFont ? { customFont: get().customFont } : {}),
     ...(get().appliedPresetId ? { appliedPresetId: get().appliedPresetId } : {}),
@@ -411,6 +421,7 @@ export const useSimulator = create<SimulatorState>((set, get) => ({
       coverExcluded: data.coverExcluded ?? {},
       coverAdded: data.coverAdded ?? {},
       tableStartCode: data.tableStartCode ?? 0,
+      variableNames: data.variableNames ?? inputVarNames(data.inputBits),
       fontStart: data.fontStart ?? 0,
       customFont: 'customFont' in fontPatch ? fontPatch.customFont! : (data.customFont ?? null),
       activeFontId: fontPatch.activeFontId ?? activeFontId,
@@ -437,6 +448,7 @@ export const useSimulator = create<SimulatorState>((set, get) => ({
       coverExcluded: {},
       coverAdded: {},
       tableStartCode: 0,
+      variableNames: inputVarNames(d.inputBits),
       fontStart: 0,
       customFont: null,
       activeFontId: 'builtin:chart',
@@ -477,8 +489,9 @@ export const useSimulator = create<SimulatorState>((set, get) => ({
       truthTable: table,
       currentInput: Math.min(get().currentInput, max),
       tableStartCode: Math.min(get().tableStartCode, max),
+      variableNames: inputVarNames(bits),
       undoSnapshot: null,
-      lastAction: `Switched to ${bits}-bit input (${bits === 5 ? 'E D C B A' : 'D C B A'})`,
+      lastAction: `Switched to ${bits}-bit input (${inputVarNames(bits).join(' ')})`,
     });
     persist(get());
   },
@@ -1034,6 +1047,28 @@ export const useSimulator = create<SimulatorState>((set, get) => ({
 
   toggleSegmentOnDisplay: (minterm, segment) => {
     set({ truthTable: ttToggleSegment(get().truthTable, minterm, segment), undoSnapshot: null });
+    persist(get());
+  },
+
+  setVariableName: (index, name) => {
+    const names = get().variableNames;
+    const clean = name.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 3);
+    if (
+      index < 0 || index >= names.length || !clean
+      || names.some((n, i) => i !== index && n === clean)
+    ) return;
+    if (names[index] === clean) return;
+    set({
+      variableNames: names.map((n, i) => (i === index ? clean : n)),
+      lastAction: `Renamed input variable ${names[index]} → ${clean}`,
+    });
+    persist(get());
+  },
+
+  resetVariableNames: () => {
+    const defaults = inputVarNames(get().inputBits);
+    if (get().variableNames.join('') === defaults.join('')) return;
+    set({ variableNames: defaults, lastAction: 'Variable names reset to defaults' });
     persist(get());
   },
 

@@ -80,7 +80,7 @@ function CustomExpressionEditor({ segment, numVars }: { segment: SegmentName; nu
     | { kind: 'mismatch'; astText: string; mismatches: number[] }
   >({ kind: 'idle' });
 
-  const varNames = numVars === 5 ? ['E', 'D', 'C', 'B', 'A'] : ['D', 'C', 'B', 'A'];
+  const varNames = useSimulator((s) => s.variableNames);
 
   const verify = () => {
     const parsed = parseBoolean(text, varNames);

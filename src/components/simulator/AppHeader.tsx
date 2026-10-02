@@ -35,6 +35,7 @@ const DISPLAY_MODES: { value: DisplayMode; label: string; hint: string }[] = [
 
 export function AppHeader({ displaySvgRef }: { displaySvgRef: React.RefObject<SVGSVGElement | null> }) {
   const inputBits = useSimulator((s) => s.inputBits);
+  const variableNames = useSimulator((s) => s.variableNames);
   const setInputBits = useSimulator((s) => s.setInputBits);
   const displayMode = useSimulator((s) => s.displayMode);
   const setDisplayMode = useSimulator((s) => s.setDisplayMode);
@@ -252,7 +253,7 @@ export function AppHeader({ displaySvgRef }: { displaySvgRef: React.RefObject<SV
               </Badge>
             )}
             <span className="hidden font-mono text-[10px] text-muted-foreground lg:block">
-              {displayModeLabel} mode · {inputBits === 5 ? 'E D C B A' : 'D C B A'}
+              {displayModeLabel} mode · {variableNames.join(' ')}
             </span>
           </div>
         </div>
