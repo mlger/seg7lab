@@ -1,0 +1,849 @@
+     1→/* eslint-disable import/no-cycle */
+     2→import { drawCircle, drawLine, arc } from './canvasApi';
+     3→import simulationArea from './simulationArea';
+     4→import { distance, showError } from './utils';
+     5→import {
+     6→    renderCanvas, scheduleUpdate, wireToBeCheckedSet,
+     7→    updateSimulationSet, updateCanvasSet, forceResetNodesSet,
+     8→    canvasMessageData,
+     9→} from './engine';
+    10→import Wire from './wire';
+    11→// import { colors } from './themer/themer';
+    12→import { colors } from './themer/themer';
+    13→import ContentionMeta from './contention'
+    14→
+    15→/**
+    16→* Constructs all the connections of Node node
+    17→ * @param {Node} node - node to be constructed
+    18→ * @param {JSON} data - the saved data which is used to load
+    19→ * @category node
+    20→ */
+    21→export function constructNodeConnections(node, data) {
+    22→    for (var i = 0; i < data.connections.length; i++) { if (!node.connections.contains(node.scope.allNodes[data.connections[i]])) node.connect(node.scope.allNodes[data.connections[i]]); }
+    23→}
+    24→
+    25→/**
+    26→ * Fn to replace node by node @ index in global Node List - used when loading
+    27→ * @param {Node} node - node to be replaced
+    28→ * @param {number} index - index of node to be replaced
+    29→ * @category node
+    30→ */
+    31→export function replace(node, index) {
+    32→    if (index == -1) {
+    33→        return node;
+    34→    }
+    35→    var { scope } = node;
+    36→    var { parent } = node;
+    37→    parent.nodeList.clean(node);
+    38→    node.delete();
+    39→    node = scope.allNodes[index];
+    40→    node.parent = parent;
+    41→    parent.nodeList.push(node);
+    42→    node.updateRotation();
+    43→    node.scope.timeStamp = new Date().getTime();
+    44→    return node;
+    45→}
+    46→function rotate(x1, y1, dir) {
+    47→    if (dir == 'LEFT') { return [-x1, y1]; } if (dir == 'DOWN') { return [y1, x1]; } if (dir == 'UP') { return [y1, -x1]; } return [x1, y1];
+    48→}
+    49→
+    50→export function extractBits(num, start, end) {
+    51→    return (num << (32 - end)) >>> (32 - (end - start + 1));
+    52→}
+    53→
+    54→export function bin2dec(binString) {
+    55→    return parseInt(binString, 2);
+    56→}
+    57→
+    58→export function dec2bin(dec, bitWidth = undefined) {
+    59→    // only for positive nos
+    60→    var bin = (dec).toString(2);
+    61→    if (bitWidth == undefined) return bin;
+    62→    return '0'.repeat(bitWidth - bin.length) + bin;
+    63→}
+    64→
+    65→/**
+    66→ * find Index of a node
+    67→ * @param {Node} x - Node to be dound
+    68→ * @category node
+    69→ */
+    70→export function findNode(x) {
+    71→    return x.scope.allNodes.indexOf(x);
+    72→}
+    73→
+    74→/**
+    75→ * function makes a node according to data providede
+    76→ * @param {JSON} data - the data used to load a Project
+    77→ * @param {Scope} scope - scope to which node has to be loaded
+    78→ * @category node
+    79→ */
+    80→export function loadNode(data, scope) {
+    81→    var n = new Node(data.x, data.y, data.type, scope.root, data.bitWidth, data.label);
+    82→}
+    83→
+    84→/**
+    85→ * get Node in index x in scope and set parent
+    86→ * @param {Node} x - the desired node
+    87→ * @param {Scope} scope - the scope
+    88→ * @param {CircuitElement} parent - The parent of node
+    89→ * @category node
+    90→ */
+    91→function extractNode(x, scope, parent) {
+    92→    var n = scope.allNodes[x];
+    93→    n.parent = parent;
+    94→    return n;
+    95→}
+    96→
+    97→// output node=1
+    98→// input node=0
+    99→// intermediate node =2
+   100→
+   101→window.NODE_INPUT = 0;
+   102→window.NODE_OUTPUT = 1;
+   103→window.NODE_INTERMEDIATE = 2;
+   104→/**
+   105→ * used to give id to a node.
+   106→ * @type {number}
+   107→ * @category node
+   108→ */
+   109→var uniqueIdCounter = 10;
+   110→
+   111→/**
+   112→ * This class is responsible for all the Nodes.Nodes are connected using Wires
+   113→ * Nodes are of 3 types;
+   114→ * NODE_INPUT = 0;
+   115→ * NODE_OUTPUT = 1;
+   116→ * NODE_INTERMEDIATE = 2;
+   117→ * Input and output nodes belong to some CircuitElement(it's parent)
+   118→ * @param {number} x - x coord of Node
+   119→ * @param {number} y - y coord of Node
+   120→ * @param {number} type - type of node
+   121→ * @param {CircuitElement} parent - parent element
+   122→ * @param {?number} bitWidth - the bits of node in input and output nodes
+   123→ * @param {string=} label - label for a node
+   124→ * @category node
+   125→ */
+   126→export default class Node {
+   127→    constructor(x, y, type, parent, bitWidth = undefined, label = '') {
+   128→        // Should never raise, but just in case
+   129→        if (isNaN(x) || isNaN(y)) {
+   130→            this.delete();
+   131→            showError('Fatal error occurred');
+   132→            return;
+   133→        }
+   134→
+   135→        forceResetNodesSet(true);
+   136→
+   137→        this.objectType = 'Node';
+   138→        this.subcircuitOverride = false;
+   139→        this.id = `node${uniqueIdCounter}`;
+   140→        uniqueIdCounter++;
+   141→        this.parent = parent;
+   142→        if (type != NODE_INTERMEDIATE && this.parent.nodeList !== undefined) { this.parent.nodeList.push(this); }
+   143→
+   144→        if (bitWidth == undefined) {
+   145→            this.bitWidth = parent.bitWidth;
+   146→        } else {
+   147→            this.bitWidth = bitWidth;
+   148→        }
+   149→        this.label = label;
+   150→        this.prevx = undefined;
+   151→        this.prevy = undefined;
+   152→        this.leftx = x;
+   153→        this.lefty = y;
+   154→        this.x = x;
+   155→        this.y = y;
+   156→
+   157→        this.type = type;
+   158→        this.connections = new Array();
+   159→        this.value = undefined;
+   160→        /**
+   161→        * @type {boolean}
+   162→        * Only relevant for NODE_OUTPUT
+   163→        * whether the value to the output node
+   164→        * was given to it by its parent
+   165→        */
+   166→        this.isValueUpstream = false;
+   167→        this.radius = 5;
+   168→        this.clicked = false;
+   169→        this.hover = false;
+   170→        this.wasClicked = false;
+   171→        this.scope = this.parent.scope;
+   172→        this.scope.timeStamp = new Date().getTime();
+   173→        /**
+   174→        * @type {string}
+   175→        * value of this.prev is
+   176→        * 'a' : whenever a node is not being dragged this.prev is 'a'
+   177→        * 'x' : when node is being dragged horizontally
+   178→        * 'y' : when node is being dragged vertically
+   179→        */
+   180→        this.prev = 'a';
+   181→        this.count = 0;
+   182→        this.highlighted = false;
+   183→
+   184→        // This fn is called during rotations and setup
+   185→        this.refresh();
+   186→
+   187→        if (this.type == NODE_INTERMEDIATE) { this.parent.scope.nodes.push(this); }
+   188→
+   189→        this.parent.scope.allNodes.push(this);
+   190→
+   191→        this.queueProperties = {
+   192→            inQueue: false,
+   193→            time: undefined,
+   194→            index: undefined,
+   195→        };
+   196→    }
+   197→
+   198→    /**
+   199→     * @param {string} - new label
+   200→     * Function to set label
+   201→     */
+   202→    setLabel(label) {
+   203→        this.label = label; // || "";
+   204→    }
+   205→
+   206→    /**
+   207→     * function to convert a node to intermediate node
+   208→     */
+   209→    converToIntermediate() {
+   210→        this.type = NODE_INTERMEDIATE;
+   211→        this.x = this.absX();
+   212→        this.y = this.absY();
+   213→        this.parent = this.scope.root;
+   214→        this.scope.nodes.push(this);
+   215→    }
+   216→
+   217→    /**
+   218→    * Helper fuction to move a node. Sets up some variable which help in changing node.
+   219→    */
+   220→    startDragging() {
+   221→        this.oldx = this.x;
+   222→        this.oldy = this.y;
+   223→    }
+   224→
+   225→    /**
+   226→    * Helper fuction to move a node.
+   227→    */
+   228→    drag() {
+   229→        this.x = this.oldx + simulationArea.mouseX - simulationArea.mouseDownX;
+   230→        this.y = this.oldy + simulationArea.mouseY - simulationArea.mouseDownY;
+   231→    }
+   232→
+   233→    /**
+   234→    * Function for saving a node
+   235→    */
+   236→    saveObject() {
+   237→        if (this.type == NODE_INTERMEDIATE) {
+   238→            this.leftx = this.x;
+   239→            this.lefty = this.y;
+   240→        }
+   241→        var data = {
+   242→            x: this.leftx,
+   243→            y: this.lefty,
+   244→            type: this.type,
+   245→            bitWidth: this.bitWidth,
+   246→            label: this.label,
+   247→            connections: [],
+   248→        };
+   249→        for (var i = 0; i < this.connections.length; i++) {
+   250→
+   251→            data.connections.push(findNode(this.connections[i]));
+   252→        }
+   253→        return data;
+   254→    }
+   255→
+   256→    /**
+   257→     * helper function to help rotating parent
+   258→     */
+   259→    updateRotation() {
+   260→        var x; var
+   261→            y;
+   262→        [x, y] = rotate(this.leftx, this.lefty, this.parent.direction);
+   263→        this.x = x;
+   264→        this.y = y;
+   265→    }
+   266→
+   267→    /**
+   268→    * Refreshes a node after roation of parent
+   269→    */
+   270→    refresh() {
+   271→        this.updateRotation();
+   272→        for (var i = 0; i < this.connections.length; i++) {
+   273→            this.connections[i].connections.clean(this);
+   274→        }
+   275→        this.scope.timeStamp = new Date().getTime();
+   276→        this.connections = [];
+   277→    }
+   278→
+   279→    /**
+   280→    * gives absolute x position of the node
+   281→    */
+   282→    absX() {
+   283→        return this.x + this.parent.x;
+   284→    }
+   285→
+   286→    /**
+   287→    * gives absolute y position of the node
+   288→    */
+   289→    absY() {
+   290→        return this.y + this.parent.y;
+   291→    }
+   292→
+   293→    /**
+   294→     * update the scope of a node
+   295→     */
+   296→    updateScope(scope) {
+   297→        this.scope = scope;
+   298→        if (this.type == NODE_INTERMEDIATE) this.parent = scope.root;
+   299→    }
+   300→
+   301→    /**
+   302→     * return true if node is connected or not connected but false if undefined.
+   303→     */
+   304→    isResolvable() {
+   305→        return this.value != undefined;
+   306→    }
+   307→
+   308→    /**
+   309→     * function used to reset the nodes
+   310→     */
+   311→    reset() {
+   312→        this.value = undefined;
+   313→        this.isValueUpstream = false;
+   314→        this.highlighted = false;
+   315→    }
+   316→
+   317→    /**
+   318→    * function to connect two nodes.
+   319→    */
+   320→    connect(n) {
+   321→        if (n == this) return;
+   322→        if (n.connections.contains(this)) return;
+   323→        var w = new Wire(this, n, this.parent.scope);
+   324→        this.connections.push(n);
+   325→        n.connections.push(this);
+   326→
+   327→        this.scope.timeStamp = new Date().getTime();
+   328→
+   329→        updateCanvasSet(true);
+   330→        updateSimulationSet(true);
+   331→        scheduleUpdate();
+   332→    }
+   333→
+   334→    /**
+   335→     * connects but doesnt draw the wire between nodes
+   336→     */
+   337→    connectWireLess(n) {
+   338→        if (n == this) return;
+   339→        if (n.connections.contains(this)) return;
+   340→        this.connections.push(n);
+   341→        n.connections.push(this);
+   342→
+   343→        this.scope.timeStamp = new Date().getTime();
+   344→
+   345→        // updateCanvasSet(true);
+   346→        updateSimulationSet(true);
+   347→        scheduleUpdate();
+   348→    }
+   349→
+   350→    /**
+   351→    * disconnecting two nodes connected wirelessly
+   352→    */
+   353→    disconnectWireLess(n) {
+   354→        this.connections.clean(n);
+   355→        n.connections.clean(this);
+   356→
+   357→        this.scope.timeStamp = new Date().getTime();
+   358→    }
+   359→
+   360→    /**
+   361→     * function to resolve a node
+   362→     */
+   363→    resolve() {
+   364→        if (this.type == NODE_OUTPUT) {
+   365→            // Since output node forces its value on its neighbours, remove its contentions.
+   366→            // An existing contention will now trickle to the other output node that was causing
+   367→            // the contention.
+   368→            simulationArea.contentionPending.removeAllContentionsForNode(this);
+   369→        }
+   370→        // Remove Propogation of values (TriState)
+   371→        if (this.value == undefined) {
+   372→            for (var i = 0; i < this.connections.length; i++) {
+   373→                if (this.connections[i].value !== undefined) {
+   374→                    this.connections[i].value = undefined;
+   375→                    simulationArea.simulationQueue.add(this.connections[i]);
+   376→                }
+   377→            }
+   378→
+   379→            if (this.type == NODE_INPUT) {
+   380→                if (this.parent.objectType == 'Splitter') {
+   381→                    this.parent.removePropagation();
+   382→                } else
+   383→                    if (this.parent.isResolvable()) { simulationArea.simulationQueue.add(this.parent); }
+   384→                    else {
+   385→                        this.parent.setOutputsUpstream(false);
+   386→                        this.parent.removePropagation();
+   387→                    }
+   388→            }
+   389→
+   390→            if (this.type == NODE_OUTPUT && !this.subcircuitOverride) {
+   391→                if (this.parent.isResolvable() && !this.parent.queueProperties.inQueue) {
+   392→                    if (this.parent.objectType == 'TriState' || this.parent.objectType == 'ControlledInverter') {
+   393→                        if (this.parent.state.value) { simulationArea.simulationQueue.add(this.parent); }
+   394→                    } else {
+   395→                        simulationArea.simulationQueue.add(this.parent);
+   396→                    }
+   397→                }
+   398→            }
+   399→
+   400→            return;
+   401→        }
+   402→
+   403→        // For input nodes, resolve its parents if they are resolvable at this point.
+   404→        if (this.type == NODE_INPUT) {
+   405→            if (this.parent.isResolvable()) { simulationArea.simulationQueue.add(this.parent); }
+   406→            else { this.parent.setOutputsUpstream(false); }
+   407→        }
+   408→
+   409→        for (var i = 0; i < this.connections.length; i++) {
+   410→            const node = this.connections[i];
+   411→
+   412→            switch (node.type) {
+   413→            case NODE_OUTPUT:
+   414→                // If node value is differnet and node value is upstream, then contention.
+   415→                if ((node.isValueUpstream && node.value != this.value) || node.bitWidth != this.bitWidth) {
+   416→                    // Check contentions
+   417→                    if (node.value != undefined && node.parent.objectType != 'SubCircuit'
+   418→                        && !(node.subcircuitOverride && node.scope != this.scope)) {
+   419→                        
+   420→                        simulationArea.contentionPending.add(node, this);
+   421→                        break;
+   422→                    }
+   423→                } else {
+   424→                    // Output node was given an agreeing value, so remove any contention
+   425→                    // entry between these two nodes if it exists.
+   426→                    simulationArea.contentionPending.remove(node, this);
+   427→                }
+   428→
+   429→            // Fallthrough. NODE_OUTPUT propagates like a contention checked NODE_INPUT
+   430→            case NODE_INPUT:
+   431→                // Check bitwidths
+   432→                if (this.bitWidth != node.bitWidth) {
+   433→                    this.highlighted = true;
+   434→                    node.highlighted = true;
+   435→                    showError(`BitWidth Error: ${this.bitWidth} and ${node.bitWidth}`);
+   436→                    break;
+   437→                }
+   438→
+   439→            // Fallthrough. NODE_INPUT propagates like a bitwidth checked NODE_INTERMEDIATE
+   440→            case NODE_INTERMEDIATE:
+   441→
+   442→                if (node.value != this.value || node.bitWidth != this.bitWidth) {
+   443→                    // Propagate
+   444→                    node.bitWidth = this.bitWidth;
+   445→                    node.value = this.value;
+   446→                    simulationArea.simulationQueue.add(node);
+   447→                }
+   448→            default:
+   449→                break;
+   450→            }
+   451→        }
+   452→    }
+   453→
+   454→    /**
+   455→     * This function is only intended for CircuitElements.
+   456→     * Therfore should stay empty in Node.
+   457→     * */
+   458→    setOutputsUpstream(bool) {
+   459→
+   460→    }
+   461→
+   462→    /**
+   463→     * this function checks if hover over the node
+   464→     */
+   465→    checkHover() {
+   466→        if (!simulationArea.mouseDown) {
+   467→            if (simulationArea.hover == this) {
+   468→                this.hover = this.isHover();
+   469→                if (!this.hover) {
+   470→                    simulationArea.hover = undefined;
+   471→                    this.showHover = false;
+   472→                }
+   473→            } else if (!simulationArea.hover) {
+   474→                this.hover = this.isHover();
+   475→                if (this.hover) {
+   476→                    simulationArea.hover = this;
+   477→                } else {
+   478→                    this.showHover = false;
+   479→                }
+   480→            } else {
+   481→                this.hover = false;
+   482→                this.showHover = false;
+   483→            }
+   484→        }
+   485→    }
+   486→
+   487→    /**
+   488→     * this function draw a node
+   489→     */
+   490→    draw() {
+   491→        const ctx = simulationArea.context;
+   492→        //        
+   493→        const color = colors["color_wire_draw"];
+   494→        if (this.clicked) {
+   495→            if (this.prev == 'x') {
+   496→                drawLine(ctx, this.absX(), this.absY(), simulationArea.mouseX, this.absY(), color, 3);
+   497→                drawLine(ctx, simulationArea.mouseX, this.absY(), simulationArea.mouseX, simulationArea.mouseY, color, 3);
+   498→            } else if (this.prev == 'y') {
+   499→                drawLine(ctx, this.absX(), this.absY(), this.absX(), simulationArea.mouseY, color, 3);
+   500→                drawLine(ctx, this.absX(), simulationArea.mouseY, simulationArea.mouseX, simulationArea.mouseY, color, 3);
+   501→            } else if (Math.abs(this.x + this.parent.x - simulationArea.mouseX) > Math.abs(this.y + this.parent.y - simulationArea.mouseY)) {
+   502→                drawLine(ctx, this.absX(), this.absY(), simulationArea.mouseX, this.absY(), color, 3);
+   503→            } else {
+   504→                drawLine(ctx, this.absX(), this.absY(), this.absX(), simulationArea.mouseY, color, 3);
+   505→            }
+   506→        }
+   507→        var colorNode = colors['stroke'];
+   508→        const colorNodeConnect = colors['color_wire_con']
+   509→        const colorNodePow = colors['color_wire_pow']
+   510→        const colorNodeLose = colors['color_wire_lose']
+   511→        const colorNodeSelected = colors['node'];
+   512→
+   513→        if (this.bitWidth == 1) colorNode = [colorNodeConnect, colorNodePow][this.value];
+   514→        if (this.value == undefined) colorNode = colorNodeLose;
+   515→        if (this.type == NODE_INTERMEDIATE) this.checkHover();
+   516→        if (this.type == NODE_INTERMEDIATE) { drawCircle(ctx, this.absX(), this.absY(), 3, colorNode);  } else { drawCircle(ctx, this.absX(), this.absY(), 3, colorNodeSelected); }
+   517→        
+   518→        if (this.highlighted || simulationArea.lastSelected == this || (this.isHover() && !simulationArea.selected && !simulationArea.shiftDown) || simulationArea.multipleObjectSelections.contains(this)) {
+   519→            ctx.strokeStyle = colorNodeSelected;
+   520→            ctx.beginPath();
+   521→            ctx.lineWidth = 3;
+   522→            arc(ctx, this.x, this.y, 8, 0, Math.PI * 2, this.parent.x, this.parent.y, 'RIGHT');
+   523→            ctx.closePath();
+   524→            ctx.stroke();
+   525→        }
+   526→
+   527→        if (this.hover || (simulationArea.lastSelected == this)) {
+   528→            if (this.showHover || simulationArea.lastSelected == this) {
+   529→                canvasMessageData.x = this.absX();
+   530→                canvasMessageData.y = this.absY() - 15;
+   531→                if (this.type == NODE_INTERMEDIATE) {
+   532→                    var v = 'X';
+   533→                    if (this.value !== undefined) { v = this.value.toString(16); }
+   534→                    if (this.label.length) {
+   535→                        canvasMessageData.string = `${this.label} : ${v}`;
+   536→                    } else {
+   537→                        canvasMessageData.string = v;
+   538→                    }
+   539→                } else if (this.label.length) {
+   540→                    canvasMessageData.string = this.label;
+   541→                }
+   542→            } else {
+   543→                setTimeout(() => {
+   544→                    if (simulationArea.hover) simulationArea.hover.showHover = true;
+   545→                    updateCanvasSet(true);
+   546→                    renderCanvas(globalScope);
+   547→                }, 400);
+   548→            }
+   549→        }
+   550→    }
+   551→
+   552→    /**
+   553→     * checks if a node has been deleted
+   554→     */
+   555→    checkDeleted() {
+   556→        if (this.deleted) this.delete();
+   557→        if (this.connections.length == 0 && this.type == NODE_INTERMEDIATE) this.delete();
+   558→    }
+   559→
+   560→    /**
+   561→    * used to update nodes if there is a event like click or hover on the node.
+   562→    * many booleans are used to check if certain properties are to be updated.
+   563→    */
+   564→    update() {
+   565→        if (embed) return;
+   566→
+   567→        if (this == simulationArea.hover) simulationArea.hover = undefined;
+   568→        this.hover = this.isHover();
+   569→
+   570→        if (!simulationArea.mouseDown) {
+   571→            if (this.absX() != this.prevx || this.absY() != this.prevy) { // Connect to any node
+   572→                this.prevx = this.absX();
+   573→                this.prevy = this.absY();
+   574→                this.nodeConnect();
+   575→            }
+   576→        }
+   577→
+   578→        if (this.hover) {
+   579→            simulationArea.hover = this;
+   580→        }
+   581→
+   582→        if (simulationArea.mouseDown && ((this.hover && !simulationArea.selected) || simulationArea.lastSelected == this)) {
+   583→            simulationArea.selected = true;
+   584→            simulationArea.lastSelected = this;
+   585→            this.clicked = true;
+   586→        } else {
+   587→            this.clicked = false;
+   588→        }
+   589→
+   590→        if (!this.wasClicked && this.clicked) {
+   591→            this.wasClicked = true;
+   592→            this.prev = 'a';
+   593→            if (this.type == NODE_INTERMEDIATE) {
+   594→                if (!simulationArea.shiftDown && simulationArea.multipleObjectSelections.contains(this)) {
+   595→                    for (var i = 0; i < simulationArea.multipleObjectSelections.length; i++) {
+   596→                        simulationArea.multipleObjectSelections[i].startDragging();
+   597→                    }
+   598→                }
+   599→
+   600→                if (simulationArea.shiftDown) {
+   601→                    simulationArea.lastSelected = undefined;
+   602→                    if (simulationArea.multipleObjectSelections.contains(this)) {
+   603→                        simulationArea.multipleObjectSelections.clean(this);
+   604→                    } else {
+   605→                        simulationArea.multipleObjectSelections.push(this);
+   606→                    }
+   607→                } else {
+   608→                    simulationArea.lastSelected = this;
+   609→                }
+   610→            }
+   611→        } else if (this.wasClicked && this.clicked) {
+   612→            if (!simulationArea.shiftDown && simulationArea.multipleObjectSelections.contains(this)) {
+   613→                for (var i = 0; i < simulationArea.multipleObjectSelections.length; i++) {
+   614→                    simulationArea.multipleObjectSelections[i].drag();
+   615→                }
+   616→            }
+   617→            if (this.type == NODE_INTERMEDIATE) {
+   618→                if (this.connections.length == 1 && this.connections[0].absX() == simulationArea.mouseX && this.absX() == simulationArea.mouseX) {
+   619→                    this.y = simulationArea.mouseY - this.parent.y;
+   620→                    this.prev = 'a';
+   621→                    return;
+   622→                } if (this.connections.length == 1 && this.connections[0].absY() == simulationArea.mouseY && this.absY() == simulationArea.mouseY) {
+   623→                    this.x = simulationArea.mouseX - this.parent.x;
+   624→                    this.prev = 'a';
+   625→                    return;
+   626→                }
+   627→                if (this.connections.length == 1 && this.connections[0].absX() == this.absX() && this.connections[0].absY() == this.absY()) {
+   628→                    this.connections[0].clicked = true;
+   629→                    this.connections[0].wasClicked = true;
+   630→                    simulationArea.lastSelected = this.connections[0];
+   631→                    this.delete();
+   632→                    return;
+   633→                }
+   634→            }
+   635→
+   636→            if (this.prev == 'a' && distance(simulationArea.mouseX, simulationArea.mouseY, this.absX(), this.absY()) >= 10) {
+   637→                if (Math.abs(this.x + this.parent.x - simulationArea.mouseX) > Math.abs(this.y + this.parent.y - simulationArea.mouseY)) {
+   638→                    this.prev = 'x';
+   639→                } else {
+   640→                    this.prev = 'y';
+   641→                }
+   642→            } else if (this.prev == 'x' && this.absY() == simulationArea.mouseY) {
+   643→                this.prev = 'a';
+   644→            } else if (this.prev == 'y' && this.absX() == simulationArea.mouseX) {
+   645→                this.prev = 'a';
+   646→            }
+   647→        } else if (this.wasClicked && !this.clicked) {
+   648→            this.wasClicked = false;
+   649→
+   650→            if (simulationArea.mouseX == this.absX() && simulationArea.mouseY == this.absY()) {
+   651→                return; // no new node situation
+   652→            }
+   653→
+   654→            var x1; var y1; var x2; var y2; var
+   655→                flag = 0;
+   656→            var n1; var
+   657→                n2;
+   658→
+   659→            // (x,y) present node, (x1,y1) node 1 , (x2,y2) node 2
+   660→            // n1 - node 1, n2 - node 2
+   661→            // node 1 may or may not be there
+   662→            // flag = 0  - node 2 only
+   663→            // flag = 1  - node 1 and node 2
+   664→            x2 = simulationArea.mouseX;
+   665→            y2 = simulationArea.mouseY;
+   666→            const x = this.absX();
+   667→            const y = this.absY();
+   668→
+   669→            if (x != x2 && y != y2) {
+   670→                // Rare Exception Cases
+   671→                if (this.prev == 'a' && distance(simulationArea.mouseX, simulationArea.mouseY, this.absX(), this.absY()) >= 10) {
+   672→                    if (Math.abs(this.x + this.parent.x - simulationArea.mouseX) > Math.abs(this.y + this.parent.y - simulationArea.mouseY)) {
+   673→                        this.prev = 'x';
+   674→                    } else {
+   675→                        this.prev = 'y';
+   676→                    }
+   677→                }
+   678→
+   679→                flag = 1;
+   680→                if (this.prev == 'x') {
+   681→                    x1 = x2;
+   682→                    y1 = y;
+   683→                } else if (this.prev == 'y') {
+   684→                    y1 = y2;
+   685→                    x1 = x;
+   686→                }
+   687→            }
+   688→
+   689→            if (flag == 1) {
+   690→                for (var i = 0; i < this.parent.scope.allNodes.length; i++) {
+   691→                    if (x1 == this.parent.scope.allNodes[i].absX() && y1 == this.parent.scope.allNodes[i].absY()) {
+   692→                        n1 = this.parent.scope.allNodes[i];
+   693→                        break;
+   694→                    }
+   695→                }
+   696→
+   697→                if (n1 == undefined) {
+   698→                    n1 = new Node(x1, y1, 2, this.scope.root);
+   699→                    for (var i = 0; i < this.parent.scope.wires.length; i++) {
+   700→                        if (this.parent.scope.wires[i].checkConvergence(n1)) {
+   701→                            this.parent.scope.wires[i].converge(n1);
+   702→                            break;
+   703→                        }
+   704→                    }
+   705→                }
+   706→                this.connect(n1);
+   707→            }
+   708→
+   709→            for (var i = 0; i < this.parent.scope.allNodes.length; i++) {
+   710→                if (x2 == this.parent.scope.allNodes[i].absX() && y2 == this.parent.scope.allNodes[i].absY()) {
+   711→                    n2 = this.parent.scope.allNodes[i];
+   712→                    break;
+   713→                }
+   714→            }
+   715→
+   716→            if (n2 == undefined) {
+   717→                n2 = new Node(x2, y2, 2, this.scope.root);
+   718→                for (var i = 0; i < this.parent.scope.wires.length; i++) {
+   719→                    if (this.parent.scope.wires[i].checkConvergence(n2)) {
+   720→                        this.parent.scope.wires[i].converge(n2);
+   721→                        break;
+   722→                    }
+   723→                }
+   724→            }
+   725→            if (flag == 0) this.connect(n2);
+   726→            else n1.connect(n2);
+   727→            if (simulationArea.lastSelected == this) simulationArea.lastSelected = n2;
+   728→        }
+   729→
+   730→        if (this.type == NODE_INTERMEDIATE && simulationArea.mouseDown == false) {
+   731→            if (this.connections.length == 2) {
+   732→                if ((this.connections[0].absX() == this.connections[1].absX()) || (this.connections[0].absY() == this.connections[1].absY())) {
+   733→                    this.connections[0].connect(this.connections[1]);
+   734→                    this.delete();
+   735→                }
+   736→            } else if (this.connections.length == 0) this.delete();
+   737→        }
+   738→    }
+   739→
+   740→    /**
+   741→     * function delete a node
+   742→     */
+   743→    delete() {
+   744→        updateSimulationSet(true);
+   745→        this.deleted = true;
+   746→        this.parent.scope.allNodes.clean(this);
+   747→        this.parent.scope.nodes.clean(this);
+   748→
+   749→        this.parent.scope.root.nodeList.clean(this); // Hope this works! - Can cause bugs
+   750→
+   751→        if (simulationArea.lastSelected == this) simulationArea.lastSelected = undefined;
+   752→        for (var i = 0; i < this.connections.length; i++) {
+   753→            this.connections[i].connections.clean(this);
+   754→            this.connections[i].checkDeleted();
+   755→        }
+   756→
+   757→        this.scope.timeStamp = new Date().getTime();
+   758→
+   759→        wireToBeCheckedSet(1);
+   760→        forceResetNodesSet(true);
+   761→        scheduleUpdate();
+   762→    }
+   763→
+   764→    isClicked() {
+   765→        return this.absX() == simulationArea.mouseX && this.absY() == simulationArea.mouseY;
+   766→    }
+   767→
+   768→    isHover() {
+   769→        return this.absX() == simulationArea.mouseX && this.absY() == simulationArea.mouseY;
+   770→    }
+   771→
+   772→    /**
+   773→     * if input nodde: it resolves the parent
+   774→     * else: it adds all the nodes onto the stack
+   775→     * and they are processed to generate verilog
+   776→     */
+   777→    nodeConnect() {
+   778→        var x = this.absX();
+   779→        var y = this.absY();
+   780→        var n;
+   781→
+   782→        for (var i = 0; i < this.parent.scope.allNodes.length; i++) {
+   783→            if (this != this.parent.scope.allNodes[i] && x == this.parent.scope.allNodes[i].absX() && y == this.parent.scope.allNodes[i].absY()) {
+   784→                n = this.parent.scope.allNodes[i];
+   785→                if (this.type == NODE_INTERMEDIATE) {
+   786→                    for (var j = 0; j < this.connections.length; j++) {
+   787→                        n.connect(this.connections[j]);
+   788→                    }
+   789→                    this.delete();
+   790→                } else {
+   791→                    this.connect(n);
+   792→                }
+   793→
+   794→                break;
+   795→            }
+   796→        }
+   797→
+   798→        if (n == undefined) {
+   799→            for (var i = 0; i < this.parent.scope.wires.length; i++) {
+   800→                if (this.parent.scope.wires[i].checkConvergence(this)) {
+   801→                    var n = this;
+   802→                    if (this.type != NODE_INTERMEDIATE) {
+   803→                        n = new Node(this.absX(), this.absY(), 2, this.scope.root);
+   804→                        this.connect(n);
+   805→                    }
+   806→                    this.parent.scope.wires[i].converge(n);
+   807→                    break;
+   808→                }
+   809→            }
+   810→        }
+   811→    }
+   812→
+   813→    processVerilog() {
+   814→        if (this.type == NODE_INPUT) {
+   815→            if (this.parent.isVerilogResolvable()) { this.scope.stack.push(this.parent); }
+   816→        }
+   817→
+   818→        for (var i = 0; i < this.connections.length; i++) {
+   819→            if (this.connections[i].verilogLabel != this.verilogLabel) {
+   820→                this.connections[i].verilogLabel = this.verilogLabel;
+   821→                this.scope.stack.push(this.connections[i]);
+   822→            }
+   823→        }
+   824→    }
+   825→}
+   826→
+   827→/**
+   828→ * delay in simulation of the node.
+   829→ * @category node
+   830→ */
+   831→Node.prototype.propagationDelay = 0;
+   832→
+   833→/**
+   834→ * backward comaptibilty?
+   835→ * @category node
+   836→ */
+   837→Node.prototype.cleanDelete = Node.prototype.delete;
+   838→
+   839→Node.prototype.processVerilog = function() {
+   840→    if (this.type == NODE_INPUT) {
+   841→        this.scope.stack.push(this.parent);
+   842→    }
+   843→    for (var i = 0; i < this.connections.length; i++) {
+   844→        if (this.connections[i].verilogLabel != this.verilogLabel) {
+   845→            this.connections[i].verilogLabel = this.verilogLabel;
+   846→            this.scope.stack.push(this.connections[i]);
+   847→        }
+   848→    }
+   849→}
