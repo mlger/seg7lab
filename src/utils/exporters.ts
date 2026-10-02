@@ -9,6 +9,7 @@ import { inputVarNames, formatHex } from './binary';
 import { sopToString, posToString } from '@/logic/expressions';
 import { generateVerilog } from '@/logic/verilogGenerator';
 import { groupCellRects } from '@/logic/kmap';
+import { FONT_GLYPHS } from '@/logic/font';
 import { PdfDoc } from './pdf';
 
 const GROUP_PALETTE = [
@@ -43,6 +44,50 @@ export function buildTruthTableCsv(project: ProjectData): string {
 
 export function buildProjectJson(project: ProjectData): string {
   return JSON.stringify(project, null, 2);
+}
+
+/**
+ * Font file: the current truth table exported as a shareable glyph set.
+ * Importing this file elsewhere (or here) rebuilds the exact table window.
+ */
+export function buildFontJson(project: ProjectData): string {
+  const glyphs = project.truthTable.rows.map((row) => {
+    const segments = SEGMENT_NAMES.filter((s) => row.outputs[s] === 1 && s !== 'DP').join('');
+    return {
+      code: row.input,
+      binary: row.input.toString(2).padStart(project.inputBits, '0'),
+      segments,
+      pattern: SEGMENT_NAMES.filter((s) => s !== 'DP').map((s) => (row.outputs[s] === 1 ? 1 : 0)).join(''),
+    };
+  });
+  return JSON.stringify(
+    {
+      format: 'sevenseg-font',
+      version: 1,
+      name: `${project.name} — table window`,
+      inputBits: project.inputBits,
+      startCode: project.tableStartCode ?? 0,
+      note: 'Each glyph lists the lit segments (A-G). Import to reproduce this exact truth-table window.',
+      glyphs,
+    },
+    null,
+    2,
+  );
+}
+
+/** The full built-in reference-chart font as a font file (74 glyphs). */
+export function buildBuiltinFontJson(): string {
+  return JSON.stringify(
+    {
+      format: 'sevenseg-font',
+      version: 1,
+      name: 'Reference chart font (74 glyphs)',
+      note: 'Uppercase A-Z, lowercase a-z and punctuation exactly as drawn on the reference chart.',
+      glyphs: FONT_GLYPHS,
+    },
+    null,
+    2,
+  );
 }
 
 export function buildVerilogModule(project: ProjectData, engines: SegmentEngineMap): string {

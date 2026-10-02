@@ -16,6 +16,7 @@ import {
   type TruthTable,
   type TruthTableRow,
 } from '@/types/simulator';
+import { buildFontTable, FONT_GLYPHS, type FontGlyph } from './font';
 
 /** Standard hexadecimal 7-segment patterns (A..G order, 1 = ON, common cathode logic). */
 export const HEX_PATTERNS: Record<string, SegmentPattern> = {
@@ -77,14 +78,22 @@ function presetCharLimit(mode: DisplayMode): number {
   switch (mode) {
     case 'decimal': return 9;
     case 'hex': return 15;
-    default: return -1; // binary / custom / raw have no preset range
+    default: return -1; // binary / custom / raw / font have no preset range
   }
+}
+
+/** Options for presetTable when used with the FONT preset. */
+export interface FontPresetOptions {
+  fontStart: number;
+  tableStartCode: number;
+  glyphs: FontGlyph[];
 }
 
 /**
  * Build a preset truth table.
  * decimal: 0-9 BCD digits, invalid inputs (>= 10) follow `behavior`.
  * hex: 0-F hex digits; for 5-bit, 16-31 follow `behavior`.
+ * font: window of the ASCII font chart (see buildFontTable).
  * binary / custom / raw: no preset — existing rows are preserved.
  */
 export function presetTable(
@@ -92,7 +101,12 @@ export function presetTable(
   mode: DisplayMode,
   behavior: InvalidBehavior,
   existing?: TruthTable,
+  fontOpts?: FontPresetOptions,
 ): TruthTable {
+  if (mode === 'font') {
+    const o = fontOpts ?? { fontStart: 0, tableStartCode: 0, glyphs: FONT_GLYPHS };
+    return buildFontTable(bits, o.fontStart, o.tableStartCode, o.glyphs);
+  }
   if (mode === 'binary' || mode === 'custom' || mode === 'raw') {
     if (existing && existing.inputBits === bits) return existing;
     return createEmptyTable(bits);
@@ -201,8 +215,13 @@ export function segmentSets(
 }
 
 /** Quick check: does the table still equal its preset? Used for a "modified" indicator. */
-export function matchesPreset(table: TruthTable, mode: DisplayMode, behavior: InvalidBehavior): boolean {
-  const preset = presetTable(table.inputBits, mode, behavior);
+export function matchesPreset(
+  table: TruthTable,
+  mode: DisplayMode,
+  behavior: InvalidBehavior,
+  fontOpts?: FontPresetOptions,
+): boolean {
+  const preset = presetTable(table.inputBits, mode, behavior, undefined, fontOpts);
   if (preset.rows.length !== table.rows.length) return false;
   return preset.rows.every((pr) => {
     const r = getRow(table, pr.input);
@@ -222,4 +241,76 @@ export function patternToChar(p: SegmentPattern): string | null {
 
 export function bitPattern(p: SegmentPatternX, segment: SegmentName): Bit {
   return p[segment] === 1 ? 1 : 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Shift operations (pattern rotation tools)                           */
+/* ------------------------------------------------------------------ */
+
+import { listedCodes } from './font';
+
+/** Rotate one row's segment values horizontally (A→B→…→DP→A or reverse).
+ *  dir = 1 moves values RIGHT (A→B); dir = -1 moves them LEFT. */
+export function shiftRowValues(
+  table: TruthTable,
+  minterm: number,
+  dir: 1 | -1,
+): TruthTable {
+  const row = getRow(table, minterm);
+  if (!row) return table;
+  const n = SEGMENT_NAMES.length;
+  const outputs = {} as SegmentPatternX;
+  SEGMENT_NAMES.forEach((seg, i) => {
+    const j = (((i + dir) % n) + n) % n;
+    outputs[SEGMENT_NAMES[j]] = row.outputs[seg];
+  });
+  return setRow(table, minterm, outputs);
+}
+
+/** Rotate one segment's column of values vertically across all rows (listed order).
+ *  dir = 1 moves values DOWN one row (with wrap); dir = -1 moves them UP. */
+export function shiftColumnValues(
+  table: TruthTable,
+  segment: SegmentName,
+  dir: 1 | -1,
+  startCode = 0,
+): TruthTable {
+  const codes = listedCodes(table.inputBits, startCode);
+  const values = codes.map((c) => getCell(table, c, segment));
+  const n = values.length;
+  const rotated = values.map((_, i) => values[(((i - dir) % n) + n) % n]);
+  let out = table;
+  codes.forEach((c, i) => {
+    out = setCell(out, c, segment, rotated[i]);
+  });
+  return out;
+}
+
+/** Rotate every row's whole pattern between codes (listed order).
+ *  dir = 1 moves patterns DOWN one row (with wrap); dir = -1 moves them UP. */
+export function shiftAllRows(
+  table: TruthTable,
+  dir: 1 | -1,
+  startCode = 0,
+): TruthTable {
+  const codes = listedCodes(table.inputBits, startCode);
+  const patterns = codes.map((c) => ({ ...getRow(table, c)!.outputs }));
+  const n = patterns.length;
+  const rotated = patterns.map((_, i) => patterns[(((i - dir) % n) + n) % n]);
+  let out = table;
+  codes.forEach((c, i) => {
+    out = setRow(out, c, rotated[i]);
+  });
+  return out;
+}
+
+/** Rotate every column of values vertically (listed order). */
+export function shiftAllColumns(
+  table: TruthTable,
+  dir: 1 | -1,
+  startCode = 0,
+): TruthTable {
+  let out = table;
+  for (const seg of SEGMENT_NAMES) out = shiftColumnValues(out, seg, dir, startCode);
+  return out;
 }

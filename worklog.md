@@ -94,3 +94,25 @@ Work Log:
 
 Stage Summary:
 - Hydration error eliminated at the root (no theme-dependent branch during render). Theme toggle verified interactive in both directions across reloads. No other hydration risks found in store/layout.
+
+---
+Task ID: 12-21
+Agent: main (Z.ai Code)
+Task: Font preset from user-uploaded reference chart + truth-table row previews + shift tools + start-code customization + font import/export.
+
+Work Log:
+- Analyzed the uploaded chart image (1015x160, 3 rows: Uppercase 26 / Lowercase 26 / Punctuation 22) with sharp pixel analysis: detected cell grid (pitch 32.6, 22x38 cells, red lit segments over gray ghost "8" outlines), extracted all 74 glyphs segment-by-segment via region classification, verified each against ASCII-art renderings; cross-checked against the dmadison/LED-Segment-ASCII font table (fetched from GitHub) — 16/22 punctuation + most letters match; image conventions kept where they differ (B=full-8, D/O=0-shape, G=ACDEF, I=BC, K/M/T/W/X quirky, ':' renders as '=', '(' / '[' share segments).
+- src/logic/font.ts — FONT_GLYPHS (74 glyphs + groups), fontPattern, listedCodes(bits, startCode) (row order with wrap), buildFontTable(bits, fontStart, tableStartCode) (glyph window → codes in listed order, font+code wrap-around), fontCharAt, fontIndexOf.
+- src/types/simulator.ts — DisplayMode +'font'; FontGlyphData/CustomFont; ProjectData + tableStartCode?/fontStart?/customFont? (backward compatible).
+- src/logic/truthTable.ts — presetTable 'font' branch w/ FontPresetOptions; matchesPreset accepts fontOpts; shift ops: shiftRowValues (A→B→…→DP rotation), shiftColumnValues / shiftAllRows / shiftAllColumns (vertical rotation in listed order, dir=1 = down, wrap).
+- src/logic/project.ts — parseFontFile (E-260..E-266), validateProject accepts new fields (E-218..E-220), parseFontGlyphsField for embedded customFont.
+- src/lib/store.ts — state tableStartCode/fontStart/customFont/undoSnapshot; actions setTableStartCode (font mode re-applies preset; other modes reorder only), setFontStart/stepFontStart/applyFontPreset, setCustomFont/clearCustomFont, shiftRow/shiftColumn/shiftAllRows/shiftAllColumns/undoShift (one-level undo; non-shift edits clear snapshot); setDisplayMode/setInputBits/loadProject/hydrate/toProjectData extended.
+- src/lib/useEngine.ts — usePresetModified font-aware.
+- Components: TruthTableCard rewritten (GlyphPreview column per row + char labels, toolbar with start-code binary input + font-window stepper/select/reset + row/col/all shift buttons + undo, clickable segment headers set active column target, rows in listed order, live badge); SevenSegmentDisplay + GlyphPreview (lightweight bare SVG, amber/dashed-X); AppHeader + FONT mode button; DisplayCard font char badge; CustomCharacterCard font-aware labels; ExportMenu + Font JSON (current table) & Font JSON (full chart font); ProjectManagerCard import detects sevenseg-font format → setCustomFont + font mode, "Import JSON / Font" button.
+- utils/exporters.ts — buildFontJson (table window w/ code+binary+segments+pattern), buildBuiltinFontJson.
+- Verification: bun script 139/139 checks (font integrity vs pixel extraction, listedCodes wrap, buildFontTable mapping incl. start=1 (A→0001, P→0000 wrap) and font-window wrap (72→( )→A), 5-bit 32 glyphs, matchesPreset, all 4 shift ops incl. wrap/X-preservation/listed-order semantics + restores, font-file parse + rejections, project validation new fields + legacy defaults + E-codes).
+- Agent-browser E2E: FONT preset loads (0000=A=ABCEFG, 0001=B=full-8) with 16/32 previews rendering correct fills; row shift right ×2 verified on m8 (I=BC→D,E), undo restores exactly one level; column B shift up wraps; all-rows down wraps; start code 0001 → row order 0001..1111,0000 with A→0001/P→0000; font window stepper B→Q and 5-bit B..g; imported 16-glyph font cycles with wrap; export→import round-trip reproduces table exactly (code 00001=B, 00000=g wrap); restore built-in font; export menu items + toasts; expressions derive live from font table (6T/19L SOP); K-map Gray labels; mobile no overflow, footer ok; VLM review clean.
+- bun run lint clean; dev.log no runtime errors.
+
+Stage Summary:
+- All 6 requested features delivered: (1) FONT preset reproducing the uploaded chart's 74 glyphs pixel-accurately, (2) live mini-preview per truth-table row, (3) shift by row/column individually or all (+undo), (4) customizable DCBA/EDCBA start code (e.g. 0001, wraps), (5) live output everywhere (single source of truth), (6) font JSON import/export + full-chart-font export. Font data is pure data — importable custom fonts drive the entire engine with no hard-coded expressions.

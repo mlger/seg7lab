@@ -9,6 +9,7 @@ import { RotateCcw, Settings2 } from 'lucide-react';
 import { useSimulator } from '@/lib/store';
 import { useCurrentInput, usePresetModified } from '@/lib/useEngine';
 import { SEGMENT_DESCRIPTIONS } from '@/logic/decoder';
+import { FONT_GLYPHS, fontCharAt } from '@/logic/font';
 import { SevenSegmentSvg, BitStripDisplay } from './SevenSegmentDisplay';
 import { ExplainBlock } from './ExplainBlock';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,6 +37,12 @@ export function DisplayCard({ svgRef }: { svgRef?: React.RefObject<SVGSVGElement
   const updateDisplaySettings = useSimulator((s) => s.updateDisplaySettings);
   const resetDisplaySettings = useSimulator((s) => s.resetDisplaySettings);
   const inputBits = useSimulator((s) => s.inputBits);
+  const fontStart = useSimulator((s) => s.fontStart);
+  const tableStartCode = useSimulator((s) => s.tableStartCode);
+  const customFont = useSimulator((s) => s.customFont);
+  const fontChar = displayMode === 'font'
+    ? fontCharAt(current.input, inputBits, fontStart, tableStartCode, customFont?.glyphs ?? FONT_GLYPHS)
+    : null;
 
   return (
     <Card>
@@ -43,6 +50,11 @@ export function DisplayCard({ svgRef }: { svgRef?: React.RefObject<SVGSVGElement
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="text-sm font-semibold tracking-wide">7-SEGMENT DISPLAY</CardTitle>
           <div className="flex items-center gap-2">
+            {fontChar !== null && (
+              <Badge variant="secondary" className="font-mono" title="Glyph assigned to the current input by the font preset">
+                {fontChar === ' ' ? '␠' : fontChar}
+              </Badge>
+            )}
             {modified && (
               <Badge variant="outline" className="border-amber-500/50 text-amber-600 dark:text-amber-400">
                 modified

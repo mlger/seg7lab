@@ -26,6 +26,7 @@ import { SEGMENT_NAMES, type DisplayMode, type InputWidth } from '@/types/simula
 const DISPLAY_MODES: { value: DisplayMode; label: string; hint: string }[] = [
   { value: 'decimal', label: 'DEC', hint: 'BCD preset 0-9; invalid inputs follow the behavior setting' },
   { value: 'hex', label: 'HEX', hint: 'Hex preset 0-F (A b C d E F); 16+ follow the behavior setting' },
+  { value: 'font', label: 'FONT', hint: 'ASCII font preset from the reference chart — 74 glyphs (A-Z, a-z, punctuation) mapped in a movable window; control the window & start code in the truth table' },
   { value: 'binary', label: 'BIN', hint: 'Binary bit-strip display of the input bits' },
   { value: 'custom', label: 'CUSTOM', hint: 'Free editing — design custom characters per input' },
   { value: 'raw', label: 'RAW', hint: 'Raw segment mode — display shows truth-table outputs directly' },

@@ -11,7 +11,7 @@ import {
   FolderOpen, Save, Plus, Copy, Trash2, Upload, RotateCcw, Cloud, HardDrive, RefreshCw,
 } from 'lucide-react';
 import { useSimulator } from '@/lib/store';
-import { validateProject } from '@/logic/project';
+import { validateProject, parseFontFile } from '@/logic/project';
 import { downloadText } from '@/utils/download';
 import { buildProjectJson } from '@/utils/exporters';
 import { ExplainBlock } from './ExplainBlock';
@@ -61,6 +61,9 @@ export function ProjectManagerCard() {
   const setProjectName = useSimulator((s) => s.setProjectName);
   const projectName = useSimulator((s) => s.projectName);
   const explain = useSimulator((s) => s.explainMode);
+  const setCustomFont = useSimulator((s) => s.setCustomFont);
+  const setDisplayMode = useSimulator((s) => s.setDisplayMode);
+  const displayMode = useSimulator((s) => s.displayMode);
 
   const [mode, setMode] = useState<'cloud' | 'local' | 'checking'>('checking');
   const [projects, setProjects] = useState<LocalProject[]>([]);
@@ -225,6 +228,23 @@ export function ProjectManagerCard() {
     try {
       const text = await file.text();
       const raw = JSON.parse(text);
+      // Font file? (format: "sevenseg-font") — load as the active font.
+      if (typeof raw === 'object' && raw !== null && (raw as Record<string, unknown>).format === 'sevenseg-font') {
+        const f = parseFontFile(raw);
+        if (!f.font) {
+          toast({ title: 'Font import rejected', description: f.errors.slice(0, 2).join(' '), variant: 'destructive' });
+          return;
+        }
+        setCustomFont(f.font);
+        if (displayMode !== 'font') setDisplayMode('font');
+        toast({
+          title: 'Font imported',
+          description:
+            `"${f.font.name}" — ${f.font.glyphs.length} glyphs now active.` +
+            (f.errors.length ? ` ${f.errors.length} glyph(s) dropped: ${f.errors[0]}` : ''),
+        });
+        return;
+      }
       const v = validateProject(raw);
       if (!v.data) {
         toast({ title: 'Import rejected', description: v.errors.slice(0, 2).join(' '), variant: 'destructive' });
@@ -345,8 +365,8 @@ export function ProjectManagerCard() {
             }}
             aria-label="Import project JSON file"
           />
-          <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
-            <Upload className="mr-1.5 h-3.5 w-3.5" aria-hidden /> Import JSON
+          <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} title="Import a project JSON or a font file (format: sevenseg-font)">
+            <Upload className="mr-1.5 h-3.5 w-3.5" aria-hidden /> Import JSON / Font
           </Button>
           <Button
             size="sm"

@@ -33,7 +33,7 @@ export type SegmentPatternX = Record<SegmentName, SegmentOutput>;
 
 export type InputWidth = 4 | 5;
 
-export type DisplayMode = 'decimal' | 'hex' | 'binary' | 'custom' | 'raw';
+export type DisplayMode = 'decimal' | 'hex' | 'binary' | 'custom' | 'raw' | 'font';
 
 export type InvalidBehavior = 'blank' | 'dontcare' | 'custom';
 
@@ -70,6 +70,18 @@ export interface DisplaySettings {
   skew: boolean;
 }
 
+/** A single glyph of an importable font file. */
+export interface FontGlyphData {
+  char: string;
+  segments: string;
+}
+
+/** A user-imported font (replaces the built-in chart font when present). */
+export interface CustomFont {
+  name: string;
+  glyphs: FontGlyphData[];
+}
+
 /** Everything persisted with a project. */
 export interface ProjectData {
   version: number;
@@ -84,6 +96,12 @@ export interface ProjectData {
   coverExcluded: Partial<Record<SegmentName, Partial<Record<CoverForm, string[]>>>>;
   /** Per-segment lists of implicant keys added to the cover beyond the minimal one. */
   coverAdded: Partial<Record<SegmentName, Partial<Record<CoverForm, string[]>>>>;
+  /** First input code of the truth table's row order (e.g. 1 → starts at 0001, wraps 0000 last). */
+  tableStartCode?: number;
+  /** Index of the first glyph of the font window (FONT preset). */
+  fontStart?: number;
+  /** User-imported font; when present it replaces the built-in chart font. */
+  customFont?: CustomFont;
 }
 
 /* ------------------------------------------------------------------ */

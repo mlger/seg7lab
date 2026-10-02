@@ -4,8 +4,10 @@
  */
 import {
   SEGMENT_NAMES,
+  type CustomFont,
   type DisplayMode,
   type DisplaySettings,
+  type FontGlyphData,
   type InvalidBehavior,
   type InputWidth,
   type ProjectData,
@@ -14,8 +16,57 @@ import {
 } from '@/types/simulator';
 import { DEFAULT_DISPLAY_SETTINGS, buildDefaultProject } from './decoder';
 import { presetTable, resizeTable } from './truthTable';
+import { isSegmentName } from './font';
 
 export const PROJECT_VERSION = 1;
+
+export const FONT_FILE_FORMAT = 'sevenseg-font';
+
+export interface FontFileResult {
+  ok: boolean;
+  font?: CustomFont;
+  errors: string[];
+}
+
+/** Parse and validate a font file ({ format: "sevenseg-font", name, glyphs: [...] }). */
+export function parseFontFile(raw: unknown): FontFileResult {
+  const errors: string[] = [];
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return { ok: false, errors: ['E-260: Font file root must be a JSON object.'] };
+  }
+  const obj = raw as Record<string, unknown>;
+  if (obj.format !== FONT_FILE_FORMAT) {
+    return { ok: false, errors: ['E-261: Not a sevenseg-font file — missing "format": "sevenseg-font".'] };
+  }
+  const name = typeof obj.name === 'string' && obj.name.trim() !== '' ? obj.name.trim().slice(0, 100) : 'Imported font';
+  if (!Array.isArray(obj.glyphs)) {
+    return { ok: false, errors: ['E-262: Font file "glyphs" must be an array.'] };
+  }
+  if (obj.glyphs.length === 0) {
+    return { ok: false, errors: ['E-263: Font file contains no glyphs.'] };
+  }
+  if (obj.glyphs.length > 1024) {
+    return { ok: false, errors: ['E-264: Font file has too many glyphs (> 1024).'] };
+  }
+  const glyphs: FontGlyphData[] = [];
+  obj.glyphs.forEach((g, i) => {
+    if (typeof g === 'object' && g !== null) {
+      const char = (g as Record<string, unknown>).char;
+      const segs = (g as Record<string, unknown>).segments;
+      const charOk = typeof char === 'string' && char.length > 0 && char.length <= 4;
+      const segsOk = typeof segs === 'string' && [...segs].every(isSegmentName);
+      if (charOk && segsOk) {
+        glyphs.push({ char, segments: segs });
+        return;
+      }
+    }
+    errors.push(`E-265: Glyph ${i} invalid (needs "char": string and "segments": subset of ABCDEFGDP) — dropped.`);
+  });
+  if (glyphs.length === 0) {
+    return { ok: false, errors: [...errors, 'E-266: No valid glyphs remain after validation.'] };
+  }
+  return { ok: errors.length === 0, font: { name, glyphs }, errors };
+}
 
 export function serializeProject(project: ProjectData): string {
   return JSON.stringify(project, null, 2);
@@ -28,7 +79,7 @@ export interface ValidateResult {
 }
 
 function isDisplayMode(v: unknown): v is DisplayMode {
-  return v === 'decimal' || v === 'hex' || v === 'binary' || v === 'custom' || v === 'raw';
+  return v === 'decimal' || v === 'hex' || v === 'binary' || v === 'custom' || v === 'raw' || v === 'font';
 }
 
 function isInvalidBehavior(v: unknown): v is InvalidBehavior {
@@ -188,6 +239,32 @@ export function validateProject(raw: unknown): ValidateResult {
   const coverExcluded = parseOverrideMap(obj.coverExcluded, 'coverExcluded');
   const coverAdded = parseOverrideMap(obj.coverAdded, 'coverAdded');
 
+  // ---- font / table-order settings (optional, backward compatible) ----
+  let tableStartCode = 0;
+  if (obj.tableStartCode !== undefined) {
+    if (typeof obj.tableStartCode === 'number' && Number.isInteger(obj.tableStartCode)) {
+      tableStartCode = Math.min(Math.max(obj.tableStartCode, 0), (1 << inputBits) - 1);
+    } else {
+      errors.push('E-218: "tableStartCode" must be an integer — using 0.');
+    }
+  }
+
+  let fontStart = 0;
+  if (obj.fontStart !== undefined) {
+    if (typeof obj.fontStart === 'number' && Number.isInteger(obj.fontStart) && obj.fontStart >= 0) {
+      fontStart = obj.fontStart;
+    } else {
+      errors.push('E-219: "fontStart" must be a non-negative integer — using 0.');
+    }
+  }
+
+  let customFont: CustomFont | undefined;
+  if (obj.customFont !== undefined) {
+    const parsed = parseFontGlyphsField(obj.customFont);
+    if (parsed) customFont = parsed;
+    else errors.push('E-220: "customFont" invalid (needs name + glyphs array) — using built-in font.');
+  }
+
   return {
     ok: errors.length === 0,
     errors,
@@ -202,8 +279,31 @@ export function validateProject(raw: unknown): ValidateResult {
       displaySettings,
       coverExcluded,
       coverAdded,
+      tableStartCode,
+      fontStart,
+      ...(customFont ? { customFont } : {}),
     },
   };
+}
+
+/** Validate the embedded customFont field of a project (less strict than a font file). */
+function parseFontGlyphsField(raw: unknown): CustomFont | null {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+  if (!Array.isArray(obj.glyphs) || obj.glyphs.length === 0) return null;
+  const name = typeof obj.name === 'string' && obj.name.trim() !== '' ? obj.name.trim().slice(0, 100) : 'Custom font';
+  const glyphs: FontGlyphData[] = [];
+  for (const g of obj.glyphs) {
+    if (typeof g === 'object' && g !== null) {
+      const char = (g as Record<string, unknown>).char;
+      const segs = (g as Record<string, unknown>).segments;
+      if (typeof char === 'string' && char.length > 0 && char.length <= 4 && typeof segs === 'string' && [...segs].every(isSegmentName)) {
+        glyphs.push({ char, segments: segs });
+      }
+    }
+  }
+  if (glyphs.length === 0) return null;
+  return { name, glyphs };
 }
 
 /** Rebuild a valid project when switching width with existing data. */

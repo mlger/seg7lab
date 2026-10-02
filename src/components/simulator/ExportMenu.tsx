@@ -5,12 +5,12 @@
 'use client';
 
 import { useState } from 'react';
-import { Download, FileJson, FileText, FileCode2, FileSpreadsheet, Image as ImageIcon, FileImage } from 'lucide-react';
+import { Download, FileJson, FileText, FileCode2, FileSpreadsheet, Image as ImageIcon, FileImage, Type } from 'lucide-react';
 import { useSimulator } from '@/lib/store';
 import { useEngines } from '@/lib/useEngine';
 import {
   buildTruthTableCsv, buildProjectJson, buildVerilogModule,
-  buildSvgBlob, buildPngBlob, buildPdfReport,
+  buildSvgBlob, buildPngBlob, buildPdfReport, buildFontJson, buildBuiltinFontJson,
 } from '@/utils/exporters';
 import { downloadBlob, downloadText, sanitizeFilename } from '@/utils/download';
 import { toast } from '@/hooks/use-toast';
@@ -56,6 +56,12 @@ export function ExportMenu({ displaySvgRef }: { displaySvgRef: React.RefObject<S
         <DropdownMenuLabel>Simulator exports</DropdownMenuLabel>
         <DropdownMenuItem onClick={() => run('JSON project', () => downloadText(buildProjectJson(toProjectData()), `${base}.json`, 'application/json'))}>
           <FileJson className="mr-2 h-4 w-4" aria-hidden /> Project JSON {busy === 'JSON project' && '…'}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => run('Font JSON (table window)', () => downloadText(buildFontJson(toProjectData()), `${base}-font.json`, 'application/json'))}>
+          <Type className="mr-2 h-4 w-4" aria-hidden /> Font JSON — current table {busy === 'Font JSON (table window)' && '…'}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => run('Font JSON (full chart font)', () => downloadText(buildBuiltinFontJson(), 'sevenseg-reference-font.json', 'application/json'))}>
+          <Type className="mr-2 h-4 w-4" aria-hidden /> Font JSON — full chart font {busy === 'Font JSON (full chart font)' && '…'}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => run('CSV truth table', () => downloadText(buildTruthTableCsv(toProjectData()), `${base}-truth-table.csv`, 'text/csv'))}>
           <FileSpreadsheet className="mr-2 h-4 w-4" aria-hidden /> Truth table CSV

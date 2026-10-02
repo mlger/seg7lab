@@ -225,3 +225,50 @@ export function BitStripDisplay({
     </div>
   );
 }
+
+/**
+ * Tiny bare glyph (no housing, no glow filter) for truth-table row previews.
+ * Renders lit segments in amber, unlit in a faint outline and don't-cares dashed,
+ * so 16–32 instances stay lightweight. Live: derived from the truth table.
+ */
+export function GlyphPreview({
+  outputs,
+  className,
+  label,
+}: {
+  outputs: SegmentPatternX | null;
+  className?: string;
+  label?: string;
+}) {
+  return (
+    <svg
+      viewBox="0 0 164 208"
+      className={cn('h-9 w-auto', className)}
+      role="img"
+      aria-label={label ?? 'Row pattern preview'}
+    >
+      <g transform="translate(2,0)">
+        {SEGMENT_ORDER.map((seg) => {
+          if (seg === 'DP') return null; // previews omit the decimal point
+          const geo = GEOMETRY[seg];
+          const v = outputs?.[seg];
+          const lit = v === 1;
+          const undef = v === 'X';
+          return (
+            <polygon
+              key={seg}
+              points={geo.points}
+              fill={lit ? '#f59e0b' : 'transparent'}
+              fillOpacity={lit ? 0.92 : 0}
+              stroke={undef ? '#d97706' : '#d6d3d1'}
+              strokeWidth={undef ? 5 : 4}
+              strokeOpacity={undef ? 0.9 : 0.66}
+              strokeDasharray={undef ? '10 7' : undefined}
+              strokeLinejoin="round"
+            />
+          );
+        })}
+      </g>
+    </svg>
+  );
+}

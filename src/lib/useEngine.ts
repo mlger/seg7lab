@@ -9,6 +9,7 @@ import { useSimulator } from '@/lib/store';
 import { computeEngines } from '@/logic/engine';
 import { matchesPreset } from '@/logic/truthTable';
 import { isSegmentLit } from '@/logic/decoder';
+import { FONT_GLYPHS } from '@/logic/font';
 import { toBits } from '@/utils/binary';
 import type { SegmentEngineMap, SegmentName, SegmentOutput } from '@/types/simulator';
 
@@ -63,8 +64,19 @@ export function usePresetModified(): boolean {
   const table = useSimulator((s) => s.truthTable);
   const mode = useSimulator((s) => s.displayMode);
   const behavior = useSimulator((s) => s.invalidBehavior);
+  const fontStart = useSimulator((s) => s.fontStart);
+  const tableStartCode = useSimulator((s) => s.tableStartCode);
+  const customFont = useSimulator((s) => s.customFont);
   return useMemo(
-    () => !matchesPreset(table, mode, behavior),
-    [table, mode, behavior],
+    () =>
+      !matchesPreset(
+        table,
+        mode,
+        behavior,
+        mode === 'font'
+          ? { fontStart, tableStartCode, glyphs: customFont?.glyphs ?? FONT_GLYPHS }
+          : undefined,
+      ),
+    [table, mode, behavior, fontStart, tableStartCode, customFont],
   );
 }

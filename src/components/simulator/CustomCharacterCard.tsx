@@ -21,8 +21,8 @@ import {
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { SEGMENT_NAMES, type SegmentName } from '@/types/simulator';
-import { HEX_PATTERNS, patternToChar, blankRowX, dontCareRowX } from '@/logic/truthTable';
-import { valueToChar } from '@/logic/truthTable';
+import { HEX_PATTERNS, valueToChar, patternToChar, blankRowX, dontCareRowX } from '@/logic/truthTable';
+import { FONT_GLYPHS, fontCharAt } from '@/logic/font';
 
 const PRESET_CHARS = Object.keys(HEX_PATTERNS);
 
@@ -39,10 +39,21 @@ export function CustomCharacterCard() {
 
   const [editing, setEditing] = useState<number | null>(null);
   const settings = useSimulator((s) => s.displaySettings);
+  const fontStart = useSimulator((s) => s.fontStart);
+  const tableStartCode = useSimulator((s) => s.tableStartCode);
+  const customFont = useSimulator((s) => s.customFont);
+  const glyphs = customFont?.glyphs ?? FONT_GLYPHS;
 
   const editingRow = editing !== null ? table.rows.find((r) => r.input === editing) : null;
   const varNames = inputBits === 5 ? ['E', 'D', 'C', 'B', 'A'] : ['D', 'C', 'B', 'A'];
   const invalidFrom = displayMode === 'hex' && inputBits === 5 ? 16 : 10;
+
+  /** Label for an input: font glyph in font mode, else the hex-style guess. */
+  const charFor = (input: number): string | null => {
+    if (displayMode === 'font') return fontCharAt(input, inputBits, fontStart, tableStartCode, glyphs);
+    const outputs = table.rows[input]?.outputs;
+    return outputs ? patternToChar(outputs) : null;
+  };
 
   return (
     <Card id="characters-card">
@@ -74,7 +85,7 @@ export function CustomCharacterCard() {
       <CardContent className="space-y-4">
         <div className="grid grid-cols-4 gap-2 sm:grid-cols-8" role="list" aria-label="Character slots per input value">
           {table.rows.map((row) => {
-            const char = patternToChar(row.outputs);
+            const char = charFor(row.input);
             const isEditing = editing === row.input;
             return (
               <button
@@ -98,7 +109,7 @@ export function CustomCharacterCard() {
                 </span>
                 <span className="font-mono text-xs font-semibold">
                   {row.input}
-                  {char && <span className="ml-1 text-muted-foreground">· {char}</span>}
+                  {char && <span className="ml-1 text-muted-foreground">· {char === ' ' ? '␠' : char}</span>}
                 </span>
               </button>
             );
@@ -112,7 +123,10 @@ export function CustomCharacterCard() {
                 Character for input m{editing}
                 {editing !== null && (
                   <span className="ml-2 font-normal text-muted-foreground">
-                    ({editing.toString(2).padStart(inputBits, '0')}) = {valueToChar(editing) === '?' ? editing : valueToChar(editing)}
+                    ({editing.toString(2).padStart(inputBits, '0')}) ={' '}
+                    {displayMode === 'font'
+                      ? `"${charFor(editing) ?? editing}"`
+                      : valueToChar(editing) === '?' ? editing : valueToChar(editing)}
                   </span>
                 )}
               </DialogTitle>
