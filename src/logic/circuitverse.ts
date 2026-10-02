@@ -468,7 +468,7 @@ class CircuitverseBuilder {
     for (const seg of SEGMENT_NAMES) {
       const engine = engines[seg];
       const terms: Term[] = this.options.logicSource === 'direct'
-        ? engine.ones.map((m) => implicantToSopTerm({ bits: m, mask: (1 << this.inputBits) - 1 }, this.inputBits))
+        ? engine.ones.map((m) => implicantToSopTerm({ bits: m, mask: (1 << this.inputBits) - 1 }, this.inputBits, this.varNames))
         : engine.activeSopTerms;
       constantOf[seg] = terms.length === 0 ? 0 : terms.some((t) => t.literals.length === 0) ? 1 : null;
       literalSets[seg] = constantOf[seg] === null ? terms.map((t) => dedupeLiterals(t.literals)) : [];

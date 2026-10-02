@@ -1,13 +1,19 @@
 /**
  * Boolean expression parser (recursive descent) + evaluator.
  *
- * Supported syntax (variables are the input bits: A B C D, plus E in 5-bit mode):
+ * Supported syntax (variables are the current input variable names — defaults
+ * A B C D, plus E in 5-bit mode; multi-character custom names are supported):
  *   OR:      x + y   |  x | y
  *   XOR:     x ^ y
  *   AND:     x * y   |  x & y   |  x · y   |  xy (juxtaposition)
  *   NOT:     !x  ~x  ¬x   or postfix x'
  *   Constants: 0, 1
  *   Grouping: ( ... )
+ *
+ * Identifiers are tokenized with greedy longest-match against `allowedVars`,
+ * so with vars [A, B, C, D, Q1] the text "Q1B" reads as Q1·B, while "AB" still
+ * reads as the juxtaposition A·B. A digit that cannot extend a variable name
+ * falls back to a constant ("A1" = A·1 unless "A1" is a variable).
  */
 import type { InputWidth } from '@/types/simulator';
 
@@ -36,18 +42,52 @@ interface Token {
 
 const OPS = ['+', '|', '^', '*', '&', '·', '!', '~', '¬', "'"];
 
-function tokenize(src: string): { tokens: Token[]; error?: ParseError } {
+function tokenize(src: string, allowedVars: string[]): { tokens: Token[]; error?: ParseError } {
   const tokens: Token[] = [];
   let i = 0;
+  const isIdentChar = (c: string): boolean => /[A-Za-z0-9_]/.test(c);
   while (i < src.length) {
     const ch = src[i];
     if (/\s/.test(ch)) {
       i++;
       continue;
     }
-    if (/[A-Za-z]/.test(ch)) {
-      tokens.push({ kind: 'var', text: ch.toUpperCase(), pos: i });
-      i++;
+    if (/[A-Za-z_]/.test(ch)) {
+      // Identifier-led run (letters/digits/underscore, uppercased). Segmented by
+      // greedy longest-match against allowedVars so juxtaposition keeps working
+      // alongside multi-character variable names; bare 0/1 fall back to constants.
+      let end = i + 1;
+      while (end < src.length && isIdentChar(src[end])) end++;
+      let rest = src.slice(i, end).toUpperCase();
+      let off = i;
+      let guard = 0;
+      while (rest.length > 0) {
+        if (++guard > 512) {
+          return { tokens, error: { message: 'Identifier run too long', position: i } };
+        }
+        let matched = '';
+        for (const v of allowedVars) {
+          if (v.length > matched.length && rest.startsWith(v)) matched = v;
+        }
+        if (matched) {
+          tokens.push({ kind: 'var', text: matched, pos: off });
+          rest = rest.slice(matched.length);
+          off += matched.length;
+        } else if (rest[0] === '0' || rest[0] === '1') {
+          tokens.push({ kind: 'const', text: rest[0], pos: off });
+          rest = rest.slice(1);
+          off += 1;
+        } else {
+          return {
+            tokens,
+            error: {
+              message: `Unknown variable "${rest}" — allowed: ${allowedVars.join(', ')}`,
+              position: off,
+            },
+          };
+        }
+      }
+      i = end;
       continue;
     }
     if (ch === '0' || ch === '1') {
@@ -76,7 +116,7 @@ function tokenize(src: string): { tokens: Token[]; error?: ParseError } {
 }
 
 export function parseBoolean(src: string, allowedVars: string[]): ParseResult {
-  const { tokens, error } = tokenize(src);
+  const { tokens, error } = tokenize(src, allowedVars);
   if (error) return { ok: false, error };
   if (tokens.length === 0) return { ok: false, error: { message: 'Empty expression', position: 0 } };
 
@@ -255,15 +295,20 @@ export function astToAscii(ast: BoolAst): string {
     case 'const': return String(ast.value);
     case 'var': return ast.name;
     case 'not': {
+      // A compound operand MUST be parenthesized: (A·B)' is not A·B'.
       const inner = astToAscii(ast.operand);
-      return `${inner}'`;
+      const compound = ast.operand.type === 'and' || ast.operand.type === 'or' || ast.operand.type === 'xor';
+      return compound ? `(${inner})'` : `${inner}'`;
     }
     case 'and':
-      return ast.operands.map((o) => (o.type === 'or' ? `(${astToAscii(o)})` : astToAscii(o))).join('');
+      // or/xor operands bind looser than juxtaposition — parenthesize so the
+      // printed form reparses to the same tree (e.g. (A^B)C, not A^BC).
+      return ast.operands.map((o) => (o.type === 'or' || o.type === 'xor' ? `(${astToAscii(o)})` : astToAscii(o))).join('');
     case 'or':
       return ast.operands.map((o) => (o.type === 'and' || o.type === 'xor' ? `(${astToAscii(o)})` : astToAscii(o))).join(' + ');
     case 'xor':
-      return ast.operands.map((o) => (o.type === 'and' ? `(${astToAscii(o)})` : astToAscii(o))).join(' ^ ');
+      // + binds looser than ^ — parenthesize or-operands (A+B)^C, not A+B^C.
+      return ast.operands.map((o) => (o.type === 'and' || o.type === 'or' ? `(${astToAscii(o)})` : astToAscii(o))).join(' ^ ');
   }
 }
 

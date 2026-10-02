@@ -20,6 +20,36 @@ import { isSegmentName } from './font';
 
 export const PROJECT_VERSION = 1;
 
+/**
+ * Systematic stored-blob versioning.
+ *
+ * To introduce project-blob version N+1: bump PROJECT_VERSION, append a
+ * migration step `N: (raw) => ...` to PROJECT_MIGRATIONS (returning the raw
+ * object with `version` set to N+1 and any shape changes applied), and both
+ * validateProject() and every consumer will walk stored blobs forward
+ * automatically. Version 0 means "no version field" (pre-versioning blobs).
+ */
+type ProjectMigration = (raw: Record<string, unknown>) => Record<string, unknown>;
+const PROJECT_MIGRATIONS: Partial<Record<number, ProjectMigration>> = {
+  0: (raw) => ({ ...raw, version: 1 }),
+};
+
+/** Walk a stored project blob forward through the migration chain (best-effort). */
+export function migrateProjectData(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return raw;
+  let obj = raw as Record<string, unknown>;
+  let v = typeof obj.version === 'number' && Number.isInteger(obj.version) ? obj.version : 0;
+  while (v < PROJECT_VERSION) {
+    const step = PROJECT_MIGRATIONS[v];
+    if (!step) break; // unknown intermediate step — let validateProject report it
+    obj = step(obj);
+    const next = typeof obj.version === 'number' ? obj.version : v + 1;
+    if (next <= v) break; // defensive: migration did not advance
+    v = next;
+  }
+  return obj;
+}
+
 export const FONT_FILE_FORMAT = 'sevenseg-font';
 
 export interface FontFileResult {
@@ -103,6 +133,8 @@ export function validateProject(raw: unknown): ValidateResult {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     return { ok: false, errors: ['E-200: Project root must be a JSON object.'] };
   }
+  // Walk stored blobs forward through the migration chain before validating.
+  raw = migrateProjectData(raw);
   const obj = raw as Record<string, unknown>;
 
   const version = typeof obj.version === 'number' ? obj.version : PROJECT_VERSION;

@@ -23,7 +23,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import type { ProjectData, ProjectSummary } from '@/types/simulator';
+import type { ProjectData } from '@/types/simulator';
+import type { ProjectSummary } from '@/types/api';
 
 const LS_PROJECTS_KEY = 'sevenseg-projects-v1';
 

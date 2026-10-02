@@ -13,38 +13,33 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
+// Ownership: anonymous per-browser owner token sent via the `x-sevenseg-owner`
+// request header (see src/lib/owner.ts). `ownerId = null` means a shared /
+// legacy row created before ownership existed — readable (and writable) by
+// everyone so existing demo data keeps working.
 
 model Project {
   id        String   @id @default(cuid())
   name      String
   inputBits Int      @default(4)
-  data      String   // full project JSON blob
+  data      String   // full project JSON blob (validated + canonicalized on write)
+  ownerId   String?  // owning browser token; null = shared/legacy row
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([updatedAt])
+  @@index([ownerId])
 }
 
 model Preset {
-  id        String   @id // client-supplied id, must start with "user:" (NOT cuid)
+  id        String   @id // client-supplied id, must match "user:" + safe charset (NOT cuid)
   kind      String        // "table" | "font"
   name      String
-  data      String   // full preset JSON blob
+  data      String   // full preset JSON blob (validated + canonicalized on write)
+  ownerId   String?  // owning browser token; null = shared/legacy row
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([updatedAt])
+  @@index([ownerId])
 }

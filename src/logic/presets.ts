@@ -542,24 +542,37 @@ export function fontGlyphsOf(font: FontPresetDef): FontGlyph[] {
   return font.glyphs as FontGlyph[];
 }
 
-/** Validate a raw table-preset def (server row data / localStorage library entry). */
+/**
+ * Validate a raw table-preset def (server row data / localStorage library entry).
+ *
+ * The stored `createdAt`/`updatedAt` are preserved (NOT restamped to now): the
+ * sync merge in store.ts compares these timestamps to decide whether a server
+ * copy is newer than a local offline edit — restamping them here would make the
+ * server copy always win and silently revert local edits.
+ */
 export function validateLibraryTablePreset(raw: unknown): TablePresetDef | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const res = parsePresetFile({ format: PRESET_FILE_FORMAT, version: PRESET_FILE_VERSION, kind: 'table', preset: raw });
   if (!res.tablePreset) return null;
-  const id = (raw as Record<string, unknown>).id;
+  const obj = raw as Record<string, unknown>;
+  const id = obj.id;
   if (typeof id !== 'string' || !id.startsWith('user:') || id.length > 100) return null;
-  return { ...res.tablePreset, id };
+  const createdAt = typeof obj.createdAt === 'string' && obj.createdAt !== '' ? obj.createdAt : res.tablePreset.createdAt;
+  const updatedAt = typeof obj.updatedAt === 'string' && obj.updatedAt !== '' ? obj.updatedAt : res.tablePreset.updatedAt;
+  return { ...res.tablePreset, id, createdAt, updatedAt };
 }
 
-/** Validate a raw font-preset def (server row data / localStorage library entry). */
+/** Validate a raw font-preset def (server row data / localStorage library entry) — timestamps preserved, see above. */
 export function validateLibraryFontPreset(raw: unknown): FontPresetDef | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const res = parsePresetFile({ format: PRESET_FILE_FORMAT, version: PRESET_FILE_VERSION, kind: 'font', preset: raw });
   if (!res.fontPreset) return null;
-  const id = (raw as Record<string, unknown>).id;
+  const obj = raw as Record<string, unknown>;
+  const id = obj.id;
   if (typeof id !== 'string' || !id.startsWith('user:') || id.length > 100) return null;
-  return { ...res.fontPreset, id };
+  const createdAt = typeof obj.createdAt === 'string' && obj.createdAt !== '' ? obj.createdAt : res.fontPreset.createdAt;
+  const updatedAt = typeof obj.updatedAt === 'string' && obj.updatedAt !== '' ? obj.updatedAt : res.fontPreset.updatedAt;
+  return { ...res.fontPreset, id, createdAt, updatedAt };
 }
 
 /** Convenience: pattern of a single glyph by char label (first match). */

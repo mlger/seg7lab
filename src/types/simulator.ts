@@ -280,10 +280,5 @@ export interface SegmentEngine {
   };
 }
 
-export interface ProjectSummary {
-  id: string;
-  name: string;
-  inputBits: number;
-  createdAt: string;
-  updatedAt: string;
-}
+// NOTE: REST DTOs (ProjectSummary etc.) live in ./api.ts — this file is the
+// domain contract only.

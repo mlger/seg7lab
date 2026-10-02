@@ -663,6 +663,36 @@ const cases: CaseDef[] = [
       c.equal(xRows.length, 6, 'table carries six all-X rows (codes 10-15)');
     }),
   },
+  {
+    // Regression: direct-SOP mode must thread custom varNames into its minterm
+    // terms (E-242 was thrown for any rename before the fix).
+    name: 'h: renamed-vars',
+    run: () => {
+      const c = new CaseChecker();
+      try {
+        const varNames = ['W', 'X', 'Y', 'Z'];
+        const engines = computeEngines(bcdTable, {}, {}, varNames);
+        for (const mode of ['minimized', 'direct'] as const) {
+          const title = `Verify renamed-${mode}`;
+          const result = buildCircuitverseProject(4, engines, { title, logicSource: mode, varNames });
+          const project = validateDataReplica(result.json, title, c);
+          const scope = project.scopes[0];
+          const inputs = componentsOf(scope).filter((x) => x.type === 'Input').map((x) => x.comp.label);
+          c.equal(inputs.length, 4, 'four inputs');
+          for (const v of varNames) c.check(inputs.includes(v), `input label ${v} present (${mode})`);
+          c.check(!inputs.includes('A'), `default label A absent in ${mode} mode`);
+          c.check(result.stats.andGates > 0, `gates present (${mode})`);
+          c.equal(result.stats.inputs, 4, 'stats.inputs');
+        }
+        console.log(`PASS h: renamed-vars — ${c.count} checks`);
+        return { pass: true, checks: c.count };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`FAIL h: renamed-vars — aborted after ${c.count} checks: ${msg}`);
+        return { pass: false, checks: c.count };
+      }
+    },
+  },
 ];
 
 let totalChecks = 0;
