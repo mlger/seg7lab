@@ -1,0 +1,225 @@
+/**
+ * Truth-table engine: presets (BCD decimal, hexadecimal), row editing,
+ * and minterm/maxterm extraction. The truth table is the SINGLE SOURCE OF TRUTH
+ * of the simulator — K-maps, expressions, circuits and the display are derived from it.
+ */
+import {
+  SEGMENT_NAMES,
+  type Bit,
+  type DisplayMode,
+  type InvalidBehavior,
+  type InputWidth,
+  type SegmentName,
+  type SegmentOutput,
+  type SegmentPattern,
+  type SegmentPatternX,
+  type TruthTable,
+  type TruthTableRow,
+} from '@/types/simulator';
+
+/** Standard hexadecimal 7-segment patterns (A..G order, 1 = ON, common cathode logic). */
+export const HEX_PATTERNS: Record<string, SegmentPattern> = {
+  '0': { A: 1, B: 1, C: 1, D: 1, E: 1, F: 1, G: 0, DP: 0 },
+  '1': { A: 0, B: 1, C: 1, D: 0, E: 0, F: 0, G: 0, DP: 0 },
+  '2': { A: 1, B: 1, C: 0, D: 1, E: 1, F: 0, G: 1, DP: 0 },
+  '3': { A: 1, B: 1, C: 1, D: 1, E: 0, F: 0, G: 1, DP: 0 },
+  '4': { A: 0, B: 1, C: 1, D: 0, E: 0, F: 1, G: 1, DP: 0 },
+  '5': { A: 1, B: 0, C: 1, D: 1, E: 0, F: 1, G: 1, DP: 0 },
+  '6': { A: 1, B: 0, C: 1, D: 1, E: 1, F: 1, G: 1, DP: 0 },
+  '7': { A: 1, B: 1, C: 1, D: 0, E: 0, F: 0, G: 0, DP: 0 },
+  '8': { A: 1, B: 1, C: 1, D: 1, E: 1, F: 1, G: 1, DP: 0 },
+  '9': { A: 1, B: 1, C: 1, D: 1, E: 0, F: 1, G: 1, DP: 0 },
+  A: { A: 1, B: 1, C: 1, D: 0, E: 1, F: 1, G: 1, DP: 0 },
+  b: { A: 0, B: 0, C: 1, D: 1, E: 1, F: 1, G: 1, DP: 0 },
+  C: { A: 1, B: 0, C: 0, D: 1, E: 1, F: 1, G: 0, DP: 0 },
+  d: { A: 0, B: 1, C: 1, D: 1, E: 1, F: 0, G: 1, DP: 0 },
+  E: { A: 1, B: 0, C: 0, D: 1, E: 1, F: 1, G: 1, DP: 0 },
+  F: { A: 1, B: 0, C: 0, D: 0, E: 1, F: 1, G: 1, DP: 0 },
+};
+
+export const BLANK_PATTERN: SegmentPattern = {
+  A: 0, B: 0, C: 0, D: 0, E: 0, F: 0, G: 0, DP: 0,
+};
+
+function patternToX(p: SegmentPattern): SegmentPatternX {
+  const out = {} as SegmentPatternX;
+  for (const s of SEGMENT_NAMES) out[s] = p[s];
+  return out;
+}
+
+/** Display character for input value 0-15 (hex letters use display case: A b C d E F). */
+const VALUE_CHARS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'b', 'C', 'd', 'E', 'F'];
+
+export function valueToChar(m: number): string {
+  return VALUE_CHARS[m] ?? '?';
+}
+
+export function blankRowX(): SegmentPatternX {
+  return patternToX(BLANK_PATTERN);
+}
+
+export function dontCareRowX(): SegmentPatternX {
+  const out = {} as SegmentPatternX;
+  for (const s of SEGMENT_NAMES) out[s] = 'X' as SegmentOutput;
+  return out;
+}
+
+function makeRows(bits: InputWidth, fill: (minterm: number) => SegmentPatternX): TruthTableRow[] {
+  return Array.from({ length: 1 << bits }, (_, m) => ({ input: m, outputs: fill(m) }));
+}
+
+export function createEmptyTable(bits: InputWidth): TruthTable {
+  return { inputBits: bits, rows: makeRows(bits, () => blankRowX()) };
+}
+
+/** Highest input value covered by the preset's character set. */
+function presetCharLimit(mode: DisplayMode): number {
+  switch (mode) {
+    case 'decimal': return 9;
+    case 'hex': return 15;
+    default: return -1; // binary / custom / raw have no preset range
+  }
+}
+
+/**
+ * Build a preset truth table.
+ * decimal: 0-9 BCD digits, invalid inputs (>= 10) follow `behavior`.
+ * hex: 0-F hex digits; for 5-bit, 16-31 follow `behavior`.
+ * binary / custom / raw: no preset — existing rows are preserved.
+ */
+export function presetTable(
+  bits: InputWidth,
+  mode: DisplayMode,
+  behavior: InvalidBehavior,
+  existing?: TruthTable,
+): TruthTable {
+  if (mode === 'binary' || mode === 'custom' || mode === 'raw') {
+    if (existing && existing.inputBits === bits) return existing;
+    return createEmptyTable(bits);
+  }
+  const limit = presetCharLimit(mode);
+  return {
+    inputBits: bits,
+    rows: makeRows(bits, (m) => {
+      if (m <= limit) {
+        return patternToX(HEX_PATTERNS[valueToChar(m)]);
+      }
+      if (behavior === 'blank') return blankRowX();
+      if (behavior === 'dontcare') return dontCareRowX();
+      // custom: keep the existing row when available
+      if (existing && existing.inputBits === bits) return existing.rows[m].outputs;
+      return blankRowX();
+    }),
+  };
+}
+
+/** Apply the invalid-input behavior (blank / don't-care / custom) to out-of-range rows. */
+export function applyInvalidBehavior(
+  table: TruthTable,
+  mode: DisplayMode,
+  behavior: InvalidBehavior,
+): TruthTable {
+  const limit = presetCharLimit(mode);
+  if (limit < 0) return table;
+  return {
+    ...table,
+    rows: table.rows.map((row) => {
+      if (row.input <= limit) return row;
+      if (behavior === 'blank') return { ...row, outputs: blankRowX() };
+      if (behavior === 'dontcare') return { ...row, outputs: dontCareRowX() };
+      return row; // custom keeps whatever is there
+    }),
+  };
+}
+
+/** Change input width, preserving overlapping rows where possible. */
+export function resizeTable(table: TruthTable, bits: InputWidth): TruthTable {
+  if (table.inputBits === bits) return table;
+  const oldCount = table.rows.length;
+  const newCount = 1 << bits;
+  const rows: TruthTableRow[] = [];
+  for (let m = 0; m < newCount; m++) {
+    if (m < oldCount) rows.push({ ...table.rows[m], input: m });
+    else rows.push({ input: m, outputs: dontCareRowX() });
+  }
+  return { inputBits: bits, rows };
+}
+
+export function setCell(
+  table: TruthTable,
+  minterm: number,
+  segment: SegmentName,
+  value: SegmentOutput,
+): TruthTable {
+  const rows = table.rows.map((r) =>
+    r.input === minterm ? { ...r, outputs: { ...r.outputs, [segment]: value } } : r,
+  );
+  return { ...table, rows };
+}
+
+export function setRow(
+  table: TruthTable,
+  minterm: number,
+  outputs: SegmentPatternX,
+): TruthTable {
+  const rows = table.rows.map((r) => (r.input === minterm ? { ...r, outputs: { ...outputs } } : r));
+  return { ...table, rows };
+}
+
+/** Toggle a segment 0 <-> 1 (keeps X -> 1). Used by clicking the display. */
+export function toggleSegment(table: TruthTable, minterm: number, segment: SegmentName): TruthTable {
+  const row = table.rows.find((r) => r.input === minterm);
+  if (!row) return table;
+  const current = row.outputs[segment];
+  const next: SegmentOutput = current === 1 ? 0 : 1;
+  return setCell(table, minterm, segment, next);
+}
+
+export function getRow(table: TruthTable, minterm: number): TruthTableRow | undefined {
+  return table.rows.find((r) => r.input === minterm);
+}
+
+export function getCell(table: TruthTable, minterm: number, segment: SegmentName): SegmentOutput {
+  return getRow(table, minterm)?.outputs[segment] ?? 0;
+}
+
+/** Extract minterm lists per segment: indices where output = 1 / 0 / X. */
+export function segmentSets(
+  table: TruthTable,
+  segment: SegmentName,
+): { ones: number[]; zeros: number[]; dontCares: number[] } {
+  const ones: number[] = [];
+  const zeros: number[] = [];
+  const dontCares: number[] = [];
+  for (const row of table.rows) {
+    const v = row.outputs[segment];
+    if (v === 1) ones.push(row.input);
+    else if (v === 0) zeros.push(row.input);
+    else dontCares.push(row.input);
+  }
+  return { ones, zeros, dontCares };
+}
+
+/** Quick check: does the table still equal its preset? Used for a "modified" indicator. */
+export function matchesPreset(table: TruthTable, mode: DisplayMode, behavior: InvalidBehavior): boolean {
+  const preset = presetTable(table.inputBits, mode, behavior);
+  if (preset.rows.length !== table.rows.length) return false;
+  return preset.rows.every((pr) => {
+    const r = getRow(table, pr.input);
+    return r !== undefined && SEGMENT_NAMES.every((s) => r.outputs[s] === pr.outputs[s]);
+  });
+}
+
+/** Convert a pattern of bits (1 = ON) into a displayable character guess, or null. */
+export function patternToChar(p: SegmentPattern): string | null {
+  const key = (c: string) => HEX_PATTERNS[c];
+  for (const c of Object.keys(HEX_PATTERNS)) {
+    const hp = key(c);
+    if (SEGMENT_NAMES.every((s) => hp[s] === p[s])) return c;
+  }
+  return null;
+}
+
+export function bitPattern(p: SegmentPatternX, segment: SegmentName): Bit {
+  return p[segment] === 1 ? 1 : 0;
+}
