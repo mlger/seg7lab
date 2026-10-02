@@ -4,12 +4,13 @@
  */
 'use client';
 
-import { useMemo } from 'react';
-import { Cpu, BookOpen, AlertTriangle, Moon, Sun, Info } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Cpu, BookOpen, AlertTriangle, Moon, Sun, Info, LayoutTemplate } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useSimulator } from '@/lib/store';
-import { useEngines, usePresetModified } from '@/lib/useEngine';
+import { useEngines, usePresetModified, useAppliedTablePreset } from '@/lib/useEngine';
 import { ExportMenu } from './ExportMenu';
+import { PresetGalleryDialog } from './PresetGalleryDialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
@@ -41,8 +42,10 @@ export function AppHeader({ displaySvgRef }: { displaySvgRef: React.RefObject<SV
   const setExplainMode = useSimulator((s) => s.setExplainMode);
   const engines = useEngines();
   const modified = usePresetModified();
+  const applied = useAppliedTablePreset();
   const displayModeLabel = useSimulator((s) => s.displayMode);
   const { resolvedTheme, setTheme } = useTheme();
+  const [galleryOpen, setGalleryOpen] = useState(false);
 
   const issues = useMemo(() => {
     const list: { severity: 'error' | 'info'; code: string; message: string }[] = [];
@@ -146,7 +149,40 @@ export function AppHeader({ displaySvgRef }: { displaySvgRef: React.RefObject<SV
               </PopoverContent>
             </Popover>
 
+            {/* preset gallery */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 max-w-[11rem] gap-1.5"
+                  onClick={() => setGalleryOpen(true)}
+                  aria-label={`Preset gallery — current preset: ${applied.name ?? 'none'}${applied.modified ? ' (modified)' : ''}`}
+                >
+                  <LayoutTemplate className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="hidden max-w-[8rem] truncate md:inline">
+                    {applied.name ?? 'No preset'}
+                  </span>
+                  {applied.modified && (
+                    <span
+                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
+                      aria-label="table modified"
+                    />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">
+                <p className="max-w-56">
+                  {applied.name
+                    ? `Preset: ${applied.name}${applied.modified ? ' — table has manual edits' : ''}`
+                    : 'No preset applied — open the gallery to pick one'}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+
             <ExportMenu displaySvgRef={displaySvgRef} />
+
+            <PresetGalleryDialog open={galleryOpen} onOpenChange={setGalleryOpen} />
 
             {/* theme — both icons render identically on server and client; visibility is
                 driven purely by the .dark class that next-themes applies before hydration,
@@ -212,7 +248,7 @@ export function AppHeader({ displaySvgRef }: { displaySvgRef: React.RefObject<SV
 
             {modified && (
               <Badge variant="outline" className="border-amber-500/50 text-[10px] text-amber-600 dark:text-amber-400">
-                table modified
+                {applied.name ? `${applied.name} · modified` : 'table modified'}
               </Badge>
             )}
             <span className="hidden font-mono text-[10px] text-muted-foreground lg:block">

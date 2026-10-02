@@ -5,9 +5,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Download, FileJson, FileText, FileCode2, FileSpreadsheet, Image as ImageIcon, FileImage, Type } from 'lucide-react';
+import { Download, FileJson, FileText, FileCode2, FileSpreadsheet, Image as ImageIcon, FileImage, Type, LayoutTemplate } from 'lucide-react';
 import { useSimulator } from '@/lib/store';
 import { useEngines } from '@/lib/useEngine';
+import { buildTablePresetFile, newUserId } from '@/logic/presets';
 import {
   buildTruthTableCsv, buildProjectJson, buildVerilogModule,
   buildSvgBlob, buildPngBlob, buildPdfReport, buildFontJson, buildBuiltinFontJson,
@@ -25,8 +26,32 @@ export function ExportMenu({ displaySvgRef }: { displaySvgRef: React.RefObject<S
   const toProjectData = useSimulator((s) => s.toProjectData);
   const projectName = useSimulator((s) => s.projectName);
   const engines = useEngines();
+  const truthTable = useSimulator((s) => s.truthTable);
+  const inputBits = useSimulator((s) => s.inputBits);
+  const tableStartCode = useSimulator((s) => s.tableStartCode);
+  const invalidBehavior = useSimulator((s) => s.invalidBehavior);
 
   const base = sanitizeFilename(projectName);
+
+  /** Current table as a literal sevenseg-preset file (importable anywhere). */
+  const buildCurrentPresetFile = () => {
+    const now = new Date().toISOString();
+    return JSON.stringify(
+      buildTablePresetFile({
+        id: newUserId(),
+        name: projectName,
+        category: 'User',
+        inputBits,
+        generator: 'literal',
+        options: { tableStartCode, invalidBehavior },
+        table: truthTable,
+        createdAt: now,
+        updatedAt: now,
+      }),
+      null,
+      2,
+    );
+  };
 
   const run = async (kind: string, fn: () => void | Promise<void>) => {
     setBusy(kind);
@@ -62,6 +87,9 @@ export function ExportMenu({ displaySvgRef }: { displaySvgRef: React.RefObject<S
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => run('Font JSON (full chart font)', () => downloadText(buildBuiltinFontJson(), 'sevenseg-reference-font.json', 'application/json'))}>
           <Type className="mr-2 h-4 w-4" aria-hidden /> Font JSON — full chart font {busy === 'Font JSON (full chart font)' && '…'}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => run('Preset JSON', () => downloadText(buildCurrentPresetFile(), `${base}-preset.json`, 'application/json'))}>
+          <LayoutTemplate className="mr-2 h-4 w-4" aria-hidden /> Preset JSON — current table {busy === 'Preset JSON' && '…'}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => run('CSV truth table', () => downloadText(buildTruthTableCsv(toProjectData()), `${base}-truth-table.csv`, 'text/csv'))}>
           <FileSpreadsheet className="mr-2 h-4 w-4" aria-hidden /> Truth table CSV

@@ -265,6 +265,34 @@ export function validateProject(raw: unknown): ValidateResult {
     else errors.push('E-220: "customFont" invalid (needs name + glyphs array) — using built-in font.');
   }
 
+  // ---- preset library linkage (optional, backward compatible) ----
+  let appliedPresetId: string | undefined;
+  if (obj.appliedPresetId !== undefined) {
+    if (typeof obj.appliedPresetId === 'string' && obj.appliedPresetId.length > 0 && obj.appliedPresetId.length <= 100) {
+      appliedPresetId = obj.appliedPresetId;
+    } else {
+      errors.push('E-222: "appliedPresetId" must be a non-empty string (≤ 100 chars) — ignored.');
+    }
+  }
+
+  let appliedPresetName: string | undefined;
+  if (obj.appliedPresetName !== undefined) {
+    if (typeof obj.appliedPresetName === 'string' && obj.appliedPresetName.trim() !== '' && obj.appliedPresetName.length <= 100) {
+      appliedPresetName = obj.appliedPresetName.trim().slice(0, 100);
+    } else {
+      errors.push('E-223: "appliedPresetName" must be a non-empty string (≤ 100 chars) — ignored.');
+    }
+  }
+
+  let activeFontId: string | undefined;
+  if (obj.activeFontId !== undefined) {
+    if (typeof obj.activeFontId === 'string' && obj.activeFontId.length > 0 && obj.activeFontId.length <= 100) {
+      activeFontId = obj.activeFontId;
+    } else {
+      errors.push('E-224: "activeFontId" must be a non-empty string (≤ 100 chars) — ignored.');
+    }
+  }
+
   return {
     ok: errors.length === 0,
     errors,
@@ -282,6 +310,9 @@ export function validateProject(raw: unknown): ValidateResult {
       tableStartCode,
       fontStart,
       ...(customFont ? { customFont } : {}),
+      ...(appliedPresetId !== undefined ? { appliedPresetId } : {}),
+      ...(appliedPresetName !== undefined ? { appliedPresetName } : {}),
+      ...(activeFontId !== undefined ? { activeFontId } : {}),
     },
   };
 }

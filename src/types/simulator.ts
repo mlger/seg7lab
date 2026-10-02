@@ -82,6 +82,65 @@ export interface CustomFont {
   glyphs: FontGlyphData[];
 }
 
+/* ------------------------------------------------------------------ */
+/* Preset library types                                                 */
+/* ------------------------------------------------------------------ */
+
+export type PresetKind = 'table' | 'font';
+
+/** Categories shown in the preset gallery. */
+export type PresetCategory = 'Digits' | 'Codes' | 'Letters' | 'Boundary' | 'User';
+
+/** Generator identifiers of built-in table presets. 'literal' = exact stored table. */
+export type PresetGenerator =
+  | 'bcd' | 'hex' | 'font' | 'excess3' | 'gray' | 'aiken'
+  | 'allon' | 'alloff' | 'literal';
+
+/** Options a table preset may carry (restored on apply). */
+export interface TablePresetOptions {
+  /** First input code of the row order (font + code presets). */
+  tableStartCode?: number;
+  /** First glyph of the font window (font presets). */
+  fontStart?: number;
+  /** Invalid-input behavior applied when generating (bcd / hex / excess3 / aiken). */
+  invalidBehavior?: InvalidBehavior;
+}
+
+/** A named truth-table preset: built-in generator or user-saved snapshot. */
+export interface TablePresetDef {
+  /** 'builtin:<name>' for built-ins, 'user:<uuid>' for user presets. */
+  id: string;
+  name: string;
+  description?: string;
+  category: PresetCategory;
+  /** Width the preset is defined at (generators adapt to the live width). */
+  inputBits: InputWidth;
+  generator: PresetGenerator;
+  options?: TablePresetOptions;
+  /** Exact table — required for generator 'literal' (user presets). */
+  table?: TruthTable;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** A named font: built-in (chart / calculator) or user-saved. */
+export interface FontPresetDef {
+  id: string;
+  name: string;
+  description?: string;
+  /** true for built-in fonts (cannot be renamed/deleted). */
+  builtin: boolean;
+  glyphs: FontGlyphData[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** The user's preset collection (persisted to localStorage + server). */
+export interface PresetLibrary {
+  tables: TablePresetDef[];
+  fonts: FontPresetDef[];
+}
+
 /** Everything persisted with a project. */
 export interface ProjectData {
   version: number;
@@ -102,6 +161,12 @@ export interface ProjectData {
   fontStart?: number;
   /** User-imported font; when present it replaces the built-in chart font. */
   customFont?: CustomFont;
+  /** Id of the table preset last applied (header indicator + reapply). */
+  appliedPresetId?: string;
+  /** Display name of the applied table preset. */
+  appliedPresetName?: string;
+  /** Id of the active font preset ('builtin:chart' | 'builtin:calculator' | 'user:…'). */
+  activeFontId?: string;
 }
 
 /* ------------------------------------------------------------------ */

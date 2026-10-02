@@ -6,10 +6,10 @@
 
 import { useRef } from 'react';
 import { RotateCcw, Settings2 } from 'lucide-react';
-import { useSimulator } from '@/lib/store';
+import { useSimulator, activeFontGlyphs } from '@/lib/store';
 import { useCurrentInput, usePresetModified } from '@/lib/useEngine';
 import { SEGMENT_DESCRIPTIONS } from '@/logic/decoder';
-import { FONT_GLYPHS, fontCharAt } from '@/logic/font';
+import { fontCharAt } from '@/logic/font';
 import { SevenSegmentSvg, BitStripDisplay } from './SevenSegmentDisplay';
 import { ExplainBlock } from './ExplainBlock';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,8 +40,9 @@ export function DisplayCard({ svgRef }: { svgRef?: React.RefObject<SVGSVGElement
   const fontStart = useSimulator((s) => s.fontStart);
   const tableStartCode = useSimulator((s) => s.tableStartCode);
   const customFont = useSimulator((s) => s.customFont);
+  const activeFontId = useSimulator((s) => s.activeFontId);
   const fontChar = displayMode === 'font'
-    ? fontCharAt(current.input, inputBits, fontStart, tableStartCode, customFont?.glyphs ?? FONT_GLYPHS)
+    ? fontCharAt(current.input, inputBits, fontStart, tableStartCode, activeFontGlyphs(customFont, activeFontId))
     : null;
 
   return (

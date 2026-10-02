@@ -8,7 +8,7 @@
 
 import { useState } from 'react';
 import { Shapes, X } from 'lucide-react';
-import { useSimulator } from '@/lib/store';
+import { useSimulator, activeFontGlyphs } from '@/lib/store';
 import { useEngines } from '@/lib/useEngine';
 import { ExplainBlock } from './ExplainBlock';
 import { SevenSegmentSvg } from './SevenSegmentDisplay';
@@ -22,7 +22,7 @@ import {
 import { cn } from '@/lib/utils';
 import { SEGMENT_NAMES, type SegmentName } from '@/types/simulator';
 import { HEX_PATTERNS, valueToChar, patternToChar, blankRowX, dontCareRowX } from '@/logic/truthTable';
-import { FONT_GLYPHS, fontCharAt } from '@/logic/font';
+import { fontCharAt } from '@/logic/font';
 
 const PRESET_CHARS = Object.keys(HEX_PATTERNS);
 
@@ -42,7 +42,8 @@ export function CustomCharacterCard() {
   const fontStart = useSimulator((s) => s.fontStart);
   const tableStartCode = useSimulator((s) => s.tableStartCode);
   const customFont = useSimulator((s) => s.customFont);
-  const glyphs = customFont?.glyphs ?? FONT_GLYPHS;
+  const activeFontId = useSimulator((s) => s.activeFontId);
+  const glyphs = activeFontGlyphs(customFont, activeFontId);
 
   const editingRow = editing !== null ? table.rows.find((r) => r.input === editing) : null;
   const varNames = inputBits === 5 ? ['E', 'D', 'C', 'B', 'A'] : ['D', 'C', 'B', 'A'];

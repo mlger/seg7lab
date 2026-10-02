@@ -42,7 +42,7 @@ export const BLANK_PATTERN: SegmentPattern = {
   A: 0, B: 0, C: 0, D: 0, E: 0, F: 0, G: 0, DP: 0,
 };
 
-function patternToX(p: SegmentPattern): SegmentPatternX {
+export function patternToX(p: SegmentPattern): SegmentPatternX {
   const out = {} as SegmentPatternX;
   for (const s of SEGMENT_NAMES) out[s] = p[s];
   return out;

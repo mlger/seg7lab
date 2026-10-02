@@ -13,8 +13,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Table as TableIcon, ArrowLeftRight, ArrowUpDown, Undo2, Type as TypeIcon, RotateCcw } from 'lucide-react';
-import { useSimulator, activeFontGlyphs } from '@/lib/store';
-import { useEngines, useCurrentInput, usePresetModified } from '@/lib/useEngine';
+import { useSimulator, activeFontGlyphs, resolveFontPreset } from '@/lib/store';
+import { useEngines, useCurrentInput, usePresetModified, useAppliedTablePreset } from '@/lib/useEngine';
 import { ExplainBlock } from './ExplainBlock';
 import { GlyphPreview } from './SevenSegmentDisplay';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -54,7 +54,10 @@ export function TruthTableCard() {
   const setFontStart = useSimulator((s) => s.setFontStart);
   const stepFontStart = useSimulator((s) => s.stepFontStart);
   const applyFontPreset = useSimulator((s) => s.applyFontPreset);
+  const reapplyPreset = useSimulator((s) => s.reapplyPreset);
   const customFont = useSimulator((s) => s.customFont);
+  const activeFontId = useSimulator((s) => s.activeFontId);
+  const presetLibrary = useSimulator((s) => s.presetLibrary);
   const clearCustomFont = useSimulator((s) => s.clearCustomFont);
   const shiftRow = useSimulator((s) => s.shiftRow);
   const shiftColumn = useSimulator((s) => s.shiftColumn);
@@ -65,11 +68,13 @@ export function TruthTableCard() {
   const engines = useEngines();
   const current = useCurrentInput();
   const modified = usePresetModified();
+  const applied = useAppliedTablePreset();
   const rowRefs = useRef<Record<number, HTMLTableRowElement | null>>({});
   const [startCodeText, setStartCodeText] = useState<string | null>(null);
 
   const varNames = inputBits === 5 ? ['E', 'D', 'C', 'B', 'A'] : ['D', 'C', 'B', 'A'];
-  const glyphs = activeFontGlyphs(customFont);
+  const glyphs = activeFontGlyphs(customFont, activeFontId);
+  const activeFontName = resolveFontPreset(activeFontId, presetLibrary)?.name ?? 'Chart font';
   const fontMode = displayMode === 'font';
 
   /** Rows in listed order (from tableStartCode, wrapping). */
@@ -217,28 +222,18 @@ export function TruthTableCard() {
               >
                 +
               </Button>
-              {modified && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 gap-1 px-2 text-[11px] text-amber-600 dark:text-amber-400"
-                  onClick={applyFontPreset}
-                  title="Discard edits and re-apply the font preset"
-                >
-                  <RotateCcw className="h-3 w-3" aria-hidden /> reset
-                </Button>
-              )}
               {customFont && (
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]">
-                      {customFont.name}
+                      {activeFontName}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent align="start" className="w-64">
                     <p className="text-xs">
-                      Imported font <span className="font-semibold">{customFont.name}</span> with{' '}
-                      {customFont.glyphs.length} glyphs is active.
+                      Font <span className="font-semibold">{activeFontName}</span> with{' '}
+                      {glyphs.length} glyphs is active — pick more fonts in the preset gallery
+                      (header button).
                     </p>
                     <Button
                       variant="outline"
@@ -250,6 +245,11 @@ export function TruthTableCard() {
                     </Button>
                   </PopoverContent>
                 </Popover>
+              )}
+              {!customFont && activeFontId === 'builtin:calculator' && (
+                <span className="text-[11px] text-muted-foreground" title="Calculator HEX font active — switch fonts in the preset gallery">
+                  {activeFontName}
+                </span>
               )}
             </div>
           )}
@@ -304,6 +304,17 @@ export function TruthTableCard() {
             >
               <Undo2 className="h-3 w-3" aria-hidden /> undo
             </Button>
+            {modified && applied.id && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 gap-1 px-2 text-[10px] text-amber-600 dark:text-amber-400"
+                onClick={fontMode ? applyFontPreset : reapplyPreset}
+                title={`Discard edits and re-apply the preset "${applied.name}"`}
+              >
+                <RotateCcw className="h-3 w-3" aria-hidden /> re-apply {fontMode ? 'font' : 'preset'}
+              </Button>
+            )}
           </div>
         </div>
 

@@ -23,13 +23,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function Home() {
   const hydrate = useSimulator((s) => s.hydrate);
+  const syncPresets = useSimulator((s) => s.syncPresetsFromServer);
   const inputBits = useSimulator((s) => s.inputBits);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   useEffect(() => {
     hydrate();
+    void syncPresets();
     return attachPersistence();
-  }, [hydrate]);
+  }, [hydrate, syncPresets]);
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">

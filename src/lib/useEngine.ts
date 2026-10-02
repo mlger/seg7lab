@@ -5,11 +5,10 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useSimulator } from '@/lib/store';
+import { useSimulator, resolveTablePreset, activeFontGlyphs } from '@/lib/store';
 import { computeEngines } from '@/logic/engine';
-import { matchesPreset } from '@/logic/truthTable';
+import { matchesTablePreset } from '@/logic/presets';
 import { isSegmentLit } from '@/logic/decoder';
-import { FONT_GLYPHS } from '@/logic/font';
 import { toBits } from '@/utils/binary';
 import type { SegmentEngineMap, SegmentName, SegmentOutput } from '@/types/simulator';
 
@@ -59,24 +58,38 @@ export function useCurrentInput() {
   }, [input, bits, table, settings, displayMode]);
 }
 
-/** Whether the truth table still equals its preset (for the "modified" indicator). */
+/**
+ * Whether the truth table no longer equals the applied preset's table
+ * (drives the "modified" indicator). No preset applied → never modified.
+ */
 export function usePresetModified(): boolean {
   const table = useSimulator((s) => s.truthTable);
-  const mode = useSimulator((s) => s.displayMode);
   const behavior = useSimulator((s) => s.invalidBehavior);
   const fontStart = useSimulator((s) => s.fontStart);
   const tableStartCode = useSimulator((s) => s.tableStartCode);
   const customFont = useSimulator((s) => s.customFont);
-  return useMemo(
-    () =>
-      !matchesPreset(
-        table,
-        mode,
-        behavior,
-        mode === 'font'
-          ? { fontStart, tableStartCode, glyphs: customFont?.glyphs ?? FONT_GLYPHS }
-          : undefined,
-      ),
-    [table, mode, behavior, fontStart, tableStartCode, customFont],
-  );
+  const activeFontId = useSimulator((s) => s.activeFontId);
+  const appliedPresetId = useSimulator((s) => s.appliedPresetId);
+  const library = useSimulator((s) => s.presetLibrary);
+  return useMemo(() => {
+    const preset = resolveTablePreset(appliedPresetId, library);
+    if (!preset) return false;
+    const effective = {
+      ...preset,
+      options: {
+        ...preset.options,
+        fontStart: preset.options?.fontStart ?? fontStart,
+        tableStartCode: preset.options?.tableStartCode ?? tableStartCode,
+      },
+    };
+    return !matchesTablePreset(table, effective, behavior, activeFontGlyphs(customFont, activeFontId));
+  }, [table, behavior, fontStart, tableStartCode, customFont, activeFontId, appliedPresetId, library]);
+}
+
+/** Info about the applied table preset for headers/toolbars. */
+export function useAppliedTablePreset(): { id: string | null; name: string | null; modified: boolean } {
+  const id = useSimulator((s) => s.appliedPresetId);
+  const name = useSimulator((s) => s.appliedPresetName);
+  const modified = usePresetModified();
+  return { id, name, modified };
 }

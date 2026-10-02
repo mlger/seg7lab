@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useSimulator } from '@/lib/store';
 import { validateProject, parseFontFile } from '@/logic/project';
+import { detectImportFormat } from '@/logic/presets';
 import { downloadText } from '@/utils/download';
 import { buildProjectJson } from '@/utils/exporters';
 import { ExplainBlock } from './ExplainBlock';
@@ -64,6 +65,7 @@ export function ProjectManagerCard() {
   const setCustomFont = useSimulator((s) => s.setCustomFont);
   const setDisplayMode = useSimulator((s) => s.setDisplayMode);
   const displayMode = useSimulator((s) => s.displayMode);
+  const importPresetFile = useSimulator((s) => s.importPresetFile);
 
   const [mode, setMode] = useState<'cloud' | 'local' | 'checking'>('checking');
   const [projects, setProjects] = useState<LocalProject[]>([]);
@@ -228,8 +230,10 @@ export function ProjectManagerCard() {
     try {
       const text = await file.text();
       const raw = JSON.parse(text);
+      const format = detectImportFormat(raw);
+
       // Font file? (format: "sevenseg-font") — load as the active font.
-      if (typeof raw === 'object' && raw !== null && (raw as Record<string, unknown>).format === 'sevenseg-font') {
+      if (format === 'font') {
         const f = parseFontFile(raw);
         if (!f.font) {
           toast({ title: 'Font import rejected', description: f.errors.slice(0, 2).join(' '), variant: 'destructive' });
@@ -245,6 +249,28 @@ export function ProjectManagerCard() {
         });
         return;
       }
+
+      // Preset file? (format: "sevenseg-preset") — add to the gallery library.
+      if (format === 'preset') {
+        const r = importPresetFile(raw);
+        if (!r.name) {
+          toast({ title: 'Preset import rejected', description: r.errors.slice(0, 2).join(' ') || 'Unknown preset file error.', variant: 'destructive' });
+          return;
+        }
+        toast({
+          title: r.kind === 'font' ? 'Font preset added' : 'Preset added to gallery',
+          description:
+            `"${r.name}" — apply it from the preset gallery (header button).` +
+            (r.errors.length ? ` ${r.errors.length} warning(s): ${r.errors[0]}` : ''),
+        });
+        return;
+      }
+
+      if (format === null) {
+        toast({ title: 'Import rejected', description: 'E-251: unrecognized file — expected a project, font or preset JSON.', variant: 'destructive' });
+        return;
+      }
+
       const v = validateProject(raw);
       if (!v.data) {
         toast({ title: 'Import rejected', description: v.errors.slice(0, 2).join(' '), variant: 'destructive' });
@@ -365,8 +391,8 @@ export function ProjectManagerCard() {
             }}
             aria-label="Import project JSON file"
           />
-          <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} title="Import a project JSON or a font file (format: sevenseg-font)">
-            <Upload className="mr-1.5 h-3.5 w-3.5" aria-hidden /> Import JSON / Font
+          <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} title="Import a project, font (sevenseg-font) or preset (sevenseg-preset) JSON file">
+            <Upload className="mr-1.5 h-3.5 w-3.5" aria-hidden /> Import JSON
           </Button>
           <Button
             size="sm"
