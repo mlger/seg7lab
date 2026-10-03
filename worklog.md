@@ -587,3 +587,31 @@ Stage Summary:
 - All four fixes delivered and verified end-to-end. Changed files: src/logic/decoder.ts (DEFAULT_PROJECT_NAME export), src/components/simulator/ProjectManagerCard.tsx, src/lib/store.ts (reset message), src/utils/exporters.ts (K-map page layout: header zone, bottom axis caption with real plane var, below-grid 2-col legend, stats cap, Verilog truncation note), src/components/simulator/logic-circuit/LogicCircuitCard.tsx (LIVE OUTPUT panel + all-segment circuit evaluation), src/components/simulator/SevenSegmentDisplay.tsx (clickHint a11y prop), src/components/simulator/truth-table/{TruthTableHeader,TruthRow,TruthTableCard}.tsx (column removal).
 - Quality gates: lint 0 · tsc 0 · verify:logic 283/283 · verify-circuitverse 64,205/64,205 · PDF qpdf+VLM all-pass (4-bit + 5-bit) · browser E2E zero errors (title, columns, live display incl. live update + segment switching, PDF download capture, responsive, footer).
 - Design decisions: live circuit-card display is a LOGIC-LEVEL view (common-cathode forced, don't-cares resolved to cover choice) complementing the main display's physical/polarity view; PDF remains dependency-free (only ASCII in streams — ellipses use "..."); default-name change does not rewrite existing persisted projects.
+---
+Task ID: 9
+Agent: main (Z.ai Code)
+Task: PLAN ONLY (user: "plan improvements in circuit tab i think there is missing dont implement yet") — Circuit tab gap analysis + improvement plan
+
+Work Log:
+- Audited every Circuit tab file: LogicCircuitCard.tsx (composition root: zoom/pan/gate-drag/selection, live eval, LIVE OUTPUT panel from Task 8), CircuitCanvas.tsx (pure SVG renderer), GateInspector.tsx, GateReference.tsx, gateVisuals, circuitNetlist.ts (buildCircuit + evaluateCircuit), plus siblings for comparison (page.tsx tabs, InputControlsCard, BooleanExpressionsCard, KarnaughMapCard, ExportMenu) and store actions.
+- Confirmed current inventory: single-segment view only; minimized SOP/POS netlist with live wire glow; LIVE OUTPUT panel; gate inspector + reference + explain; drag/pan/wheel-zoom; fit button; legend.
+- Verified 9 gaps in code (no speculation):
+  G1 No whole-decoder view — only one segment's circuit at a time; the .cv export builds all 8 but the app never shows them together.
+  G2 Canonical forms silently render MINIMIZED circuits — LogicCircuitCard maps csop/cpos to activeSopTerms/activePosTerms ('pos'||'cpos'?'pos':'sop'), so selecting "Canonical SOP (Σm)" in the Expressions tab shows the identical minimized circuit labeled "SOP".
+  G3 "Fit view" only resets zoom=1/pan=0 — never computes bounds; canvas fixed h-[400px]; no fullscreen/expand.
+  G4 No SOP/POS toggle in the Circuit tab (must visit Expressions tab; badge is display-only).
+  G5 No wire tracing — selected gate gets amber box only; fan-in/fan-out wires not highlighted; wires have no tooltips.
+  G6 No dynamics — no input auto-sweep player, no level-by-level propagation demo (grep: no setInterval/play anywhere).
+  G7 No K-map ↔ circuit linkage — K-map has hoverable colored cover groups (hoverGroup + glow); term gates map 1:1 to those groups; zero cross-highlighting.
+  G8 No circuit image export — Export menu covers display SVG/PNG, PDF, CSV, Verilog, .cv, JSONs; nothing for the circuit canvas.
+  G9 Stats/a11y — only single-segment gate-count badge (depth + per-segment chips exist only inside the CV export dialog); rails/gates are pointer-only (no tabIndex/onKeyDown in logic-circuit/).
+- Wrote the phased improvement plan (below) and presented to user for approval. NO code changes made (repo untouched, dev server untouched).
+
+Stage Summary:
+- Deliverable = Circuit tab improvement PLAN (awaiting user approval). Phases:
+  P1 Correctness & core UX: (1a) real canonical netlists — csop/cpos feed mintermToTerm/maxtermToTerm terms into buildCircuit so canonical vs minimized is VISIBLE; (1b) form toggle chips in circuit header via setExpressionForm; (1c) true fit-to-content + expandable/fullscreen canvas; (1d) selected-gate wire-cone highlight + wire tooltips.
+  P2 Whole-decoder view (the headline gap): Segment/Full-decoder mode toggle; new pure layout composer (shared input+NOT rails left, 8 stacked per-segment bands) reusing buildCircuit per segment + existing pan/zoom/drag; live eval of all 8 (memo pattern already proven in liveOutputs); click band → jump to segment; decoder stats strip (total gates/wires/depth + per-segment chips reusing CV stats helpers).
+  P3 Dynamics & learning: input auto-sweep player (play/pause + speed, respects prefers-reduced-motion); level-by-level propagation step mode; K-map group ↔ term-gate cross-highlight via shared hover key.
+  P4 Export & a11y: circuit SVG/PNG export (reuse buildSvgBlob/buildPngBlob); keyboard support (rails toggle, gates inspect, arrow pan); wire titles.
+- Invariants: circuitverse.ts + 64,205-check verify-circuitverse untouched (UI-only); verify-logic 283 stays green (buildCircuit semantics unchanged — canonical terms just feed the same builder); lint 0 / tsc 0 gates.
+- Recommendation: P1+P2 = the core of what is "missing" (whole-decoder view G1 + canonical honesty G2); P3 high educational value; P4 polish. Decision points: approve subset (rec P1+P2), canonical real-vs-label (rec real), full-decoder layout stacked-shared-rails (rec) vs grid, P3 now vs deferred.
