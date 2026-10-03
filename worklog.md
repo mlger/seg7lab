@@ -721,3 +721,29 @@ Stage Summary:
 - SEG7 Lab identity shipped across every P1 surface: logomark (in-app component + standalone favicon), header lockup, footer, metadata/OG/Twitter, 1200×630 OG card. Brand accent system formalized as a documented 4-role token layer (signal/learn/fault/net) with Bench/Datasheet theme naming in copy; voice contract codified. Existing toast/empty-state copy audited and confirmed already on-voice (no churn).
 - Changed files: src/app/globals.css, src/app/layout.tsx, src/app/page.tsx, src/components/simulator/AppHeader.tsx, NEW src/components/simulator/brand/BrandMark.tsx, NEW public/seg7-mark.svg, NEW public/og.png. Untouched: exporters.ts/pdf.ts (P3), logic, store, netlists — both verify pins green.
 - P3 (signature moments: 14-seg SVG wordmark, power-on first-run, export banners, further OG variants) and P4 (go-to-market kit) remain, per plan.
+---
+Task ID: 14
+Agent: main (Z.ai Code)
+Task: Fix Cloudflare Workers deploy failure (user uploaded build log: error 10143, service binding WORKER_SELF_REFERENCE references Worker 'nextjs-tailwind-shadcn-ts' which was not found)
+
+Work Log:
+- Parsed the 51KB Workers Builds log: `next build` SUCCEEDED (○ / + 4 ƒ API routes). Failure was at the final `wrangler deploy` API call only. Root cause chain:
+  * Deploy command `npx wrangler deploy` + no wrangler config in repo → wrangler 4.147 auto-ran `@opennextjs/cloudflare migrate` INSIDE the build container (v1.20.8).
+  * The migrate copies node_modules/@opennextjs/cloudflare/templates/wrangler.jsonc, whose WORKER_SELF_REFERENCE service binding template comment explicitly says "the service name must match the worker name".
+  * It filled <WORKER_NAME> with the package/repo name (package.json name = "nextjs_tailwind_shadcn_ts" → sanitized "nextjs-tailwind-shadcn-ts") while the account's Worker is named seg7lab → Cloudflare API rejected the version upload (code 10143).
+  * Trap: generated files live only in the ephemeral build container → every deploy re-runs the same broken auto-migration.
+- Verified in-repo facts: package name, prisma schema (sqlite + env DATABASE_URL), no next/image usage, no getCloudflareContext usage, no sharp/z-ai-web-dev-sdk imports in src, client store degrades gracefully when /api/presets fails (catch → local library stands).
+- Fix (committed to repo so the auto-migration never runs again):
+  * NEW wrangler.jsonc: name seg7lab, main .open-next/worker.js, compatibility_date 2026-10-01, flags nodejs_compat + global_fetch_strictly_public, assets (.open-next/assets + ASSETS binding), services WORKER_SELF_REFERENCE → seg7lab (matches worker name — template requirement), observability on. IMAGES binding dropped (app has no next/image; avoids Images-product account requirements). No R2 bucket (app has no ISR).
+  * NEW open-next.config.ts: defineCloudflareConfig({}) — deliberately NOT the template's r2IncrementalCache (no NEXT_INC_CACHE_R2_BUCKET binding exists; app has no ISR/revalidation → default no-op incremental cache is correct).
+  * NEW public/_headers: immutable cache for /_next/static/*.
+  * package.json: + "deploy" / "preview" scripts (opennextjs-cloudflare build && deploy/preview); bun add -d @opennextjs/cloudflare@^1.20.8 + wrangler@^4.147.0 (lockfile updated — `bun install --frozen-lockfile` on CF stays green).
+  * .gitignore: + .open-next, .wrangler, .dev.vars.
+- Validation: `wrangler deploy --dry-run` with a stub .open-next/worker.js → binding table exactly `env.WORKER_SELF_REFERENCE (seg7lab)` + `env.ASSETS` (vs the failed deploy's (nextjs-tailwind-shadcn-ts) + IMAGES); stub removed afterwards. Did NOT run opennextjs-cloudflare build in the sandbox (next build would clobber the running dev server's .next — sandbox rule).
+- Gates: lint 0 · tsc 0 (includes new open-next.config.ts) · verify:logic 283/283 · verify-circuitverse 64,205/64,205. Dev server unaffected (GET / 200); browser E2E (dedicated session): page renders, mark + tabs present, zero console/page errors.
+- User instructions given: in the Cloudflare dashboard change the Deploy command to `bun run deploy` (Build command can stay `bun run build`), then push. Runtime caveat documented: Prisma+SQLite cannot run on workerd — /api/presets & /api/projects will 500 (app degrades to localStorage presets/projects, UI fully functional). D1/Turso migration offered as follow-up.
+
+Stage Summary:
+- Deploy blocker fixed at the root: OpenNext + wrangler config now committed with the self-reference binding correctly named after the actual Worker (seg7lab), deps pinned in devDependencies, lockfile consistent, auto-migration disabled by the presence of a real wrangler.jsonc.
+- Changed files: NEW wrangler.jsonc, NEW open-next.config.ts, NEW public/_headers, package.json (scripts + devDeps + bun.lock), .gitignore. App code, logic, exports, store: UNTOUCHED (both verify pins green).
+- Open follow-up (needs user decision): migrate Prisma SQLite → Cloudflare D1 (driver adapters + d1 binding + migrations) or Turso/libSQL if server-side preset/project persistence is wanted on Workers.

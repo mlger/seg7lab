@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "seg7lab",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      // Self-reference service binding — the service name MUST match the
+      // worker name above (see templates/wrangler.jsonc in
+      // @opennextjs/cloudflare). The previous deploy failed with error 10143
+      // because the auto-generated config filled this with the package name
+      // ("nextjs-tailwind-shadcn-ts"), which doesn't exist in the account.
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "seg7lab"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
