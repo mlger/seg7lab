@@ -535,3 +535,36 @@ Work Log:
 
 Stage Summary:
 - Deliverable = the wire-organization PLAN (presented to user for approval; NOT implemented). Key design: replicate CV-CA's rail-cursor + staircase layout in the .cv exporter with a reserved display band; public API buildCircuitverseProject() unchanged; extend verify-circuitverse.ts with the zero-overlap/zero-coincidence/zero-pass-through geometric invariants (all existing 30,893 checks must stay green). Decision points for user: layout (CA-authentic single column [recommended] vs banded re-route vs toggle), OR width (≤8 + trees [recommended] vs CV-true wide ORs), skip CV's dead _C_ constant rails [recommended]. Research artifacts preserved in /tmp/cv-ca-research/ (CV sources, 12 layout SVGs, screenshots, prototype script copy).
+
+---
+Task ID: 4
+Agent: main (Z.ai Code)
+Task: Implement the approved CircuitVerse wire-organization plan (CA-authentic single-column layout, OR ≤8 + balanced trees, no dead _C_ rails)
+
+Work Log:
+- Read prior research artifacts (/tmp/cv-ca-research/): prototype geometry mock, CV sources (node.js rotate/saveObject semantics, combinationalAnalysis.js, wire.js resolve), fetched SevenSegDisplay.js/NotGate.js/ConstantVal.js via jsdelivr to pin real body dimensions.
+- Confirmed the .cv rotation model: pins store RAW constructor offsets; loader applies node.js rotate(offset, parent.direction) at render (DOWN = [y,x]); wires render between rotated positions — so direction-DOWN Inputs/NotGates are exactly what CV's own CA generator saves.
+- Confirmed CV's runtime natively supports 3-connection type-2 junction nodes (CA's own rail-tap pattern; Node.resolve iterates all connections).
+- Rewrote src/logic/circuitverse.ts builder internals (public API buildCircuitverseProject unchanged, E-240..E-243 preserved, +defensive E-244/E-245):
+  * Inputs in one top row (direction DOWN, label UP, 40px pitch); per-variable NOT gates hang 20px right (DOWN), forming dual vertical rails.
+  * Rail-cursor taps (CA logixNodes pattern): each gate-input tap = one vertical descent bend + one horizontal into the pin; junction bends carry up to 3 connections; rails only exist when used, no bottom cleanup stubs (approved option 3: no dead rails).
+  * AND column with CA term stacking (c*10+30 pitch); single-literal terms = junction substitute nodes; constant segments = ConstantVal at the column.
+  * OR column with CA symmetric staircase fan (channel per pair j/n-1-j, grid-snapped midpoint); >8-term segments use balanced ≤8-input OR trees cascading right in 90px columns (approved option 2); root keeps the segment label, chunk gates get label1..k; snapUp10 min-gap rule after each OR.
+  * Reserved 220px display band: top-pin OR groups (G F A B) above, bottom-pin (E D C DP) below, constant/single-term groups pinned last; per-segment display feeds via dedicated vertical channels (feedBaseX+20/60+10t) + staggered lanes (dispY∓60-10t) entering pins vertically.
+  * Literals sorted by variable order (CA feeds AND pins in variable order); stats/depth/segStats preserved (SEGMENT_NAMES order restored via sort).
+- Extended scripts/verify-circuitverse.ts:
+  * Direction checks updated: Input/NotGate must be DOWN (+Input labelDirection UP), everything else RIGHT.
+  * Type-2 arity check relaxed to 2 or 3 (rail junctions), with comment citing the CA precedent.
+  * NEW geometryChecks layer: rotation-aware rendered coordinates, 0 diagonals, 0 coincident nodes, 0 overlapping collinear wire pairs (h+v), 0 wires through component bodies (visual box model from real CV sources: gates fixed [-10,+20]×[-20,+20], display glyph [-20,+25]×[-40,+45], pins on box edges), 0 overlapping component boxes.
+  * NEW case "i: font-5bit-direct" (32-minterm torture: OR trees, fan-in ≤8 asserted, tree gate counts vs independent orTreeCount mirror, depth ≥4).
+  * Two real bug fixes found by the new invariants during development: rail cleanup stubs (1-connection nodes → removed cleanup pass) and wrong AndGate box model (pin-span height vs real fixed 40px body from customDraw).
+- scripts/verify-logic.ts: re-pinned wire counts only (134→194 minimized, 512→583 direct) with comment; gate counts/depth pins unchanged and still pass.
+- Visual verification: rendered v2 layouts to SVG (rendered-coords, DOWN rotation applied) → PNG via agent-browser dedicated session → VLM: minimized judged "highly organized, parallel rails, traceable, no defects" vs old "spaghetti"; direct mode judged structurally identical to the approved research target after matching box-render convention (earlier perceived "staggering" was a box-style artifact; AND y-data confirmed uniform 70px intra-group gaps and CA-exact OR midpoints incl. tree columns c1@570/c2@570/c@660).
+- Browser E2E (dedicated session): opened app → Export menu → "CircuitVerse circuit (.cv)" → dialog shows new stats (125 bends minimized / 324 direct, depth 3/4) → hooked URL.createObjectURL, clicked Download in BOTH modes, extracted the exact downloaded bytes → full off-browser validation: importer-replica key order, mutual connections, grid, geometry 0/0/0/0, and exhaustive logic sim (16 codes × 8 segments vs the app's actual dontcare engines — initial mismatch at invalid code 10 was my reference using 'blank'; app runs dontcare; all 128 logic checks per mode pass). Zero console/page errors; app healthy after; dev.log clean.
+- Cleanup: removed tmp-render/ throwaway scripts, closed both browser sessions, deleted stray tool-result file.
+
+Stage Summary:
+- Wire-organization plan IMPLEMENTED and verified end-to-end. Changed files: src/logic/circuitverse.ts (CA-style layout engine), scripts/verify-circuitverse.ts (geometry invariants + tree case, 30,893→64,205 checks), scripts/verify-logic.ts (wire-count re-pin only).
+- Quality gates: verify-circuitverse 64,205/64,205 ALL PASS (10 cases) · verify-logic 283/283 · lint clean · tsc clean · browser E2E zero errors · actual downloaded files validate 0 overlaps/0 coincident/0 pass-through/0 box overlaps + correct logic.
+- Key decisions executed per approval: CA-authentic single-column layout with rail cursors + staircase fans; OR fan-in capped at 8 with balanced trees cascading in 90px columns; no dead _C_ rails / no dead NOT gates / no rail-bottom stubs; display reserved 220px band with pin-side group split; type-2 junction nodes (≤3 connections) accepted as CA-precedent.
+- Import fidelity basis unchanged: connectivity remains ID-referenced; every file still passes the exact ValidateData replica + exhaustive logic simulation; only geometry fields changed (plus Input/NotGate direction DOWN, grounded in CV's own generator + loader rotate semantics).

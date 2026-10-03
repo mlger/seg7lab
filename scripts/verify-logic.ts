@@ -300,11 +300,14 @@ const enginesDefault = computeEngines(bcd, {}, {});
 const enginesCustom = computeEngines(bcd, {}, {}, CUSTOM_NAMES);
 
 /**
- * Stats pinned to the values browser-verified during the P2 wave (Task 6-a
- * E2E: "4 inputs / 16 AND / 7 OR / 3 NOT / 1 constant / 134 wires, depth 3"
- * for minimized mode; 49 AND / 9 OR / 512 wires for direct mode). Renaming
- * variables only changes labels, never structure — custom-name builds must
- * produce identical counts.
+ * Stats pinned to the values browser-verified end-to-end. Gate counts and
+ * depth were pinned during the P2 wave ("4 inputs / 16 AND / 7 OR / 3 NOT /
+ * 1 constant / depth 3" minimized; 49 AND / 9 OR direct) and are unchanged
+ * by the v2 CA-style layout. Wire counts were re-pinned for the v2 layout
+ * (organized rails + staircase fans + dedicated display feed channels use
+ * more — but strictly non-overlapping — wire segments than the old nest).
+ * Renaming variables only changes labels, never structure — custom-name
+ * builds must produce identical counts.
  */
 function assertSaneStats(label: string, stats: {
   inputs: number; inverters: number; andGates: number; orGates: number;
@@ -367,13 +370,13 @@ function tryBuild(
   equal('pinned minimized: orGates', min.stats.orGates, 7);
   equal('pinned minimized: inverters', min.stats.inverters, 3);
   equal('pinned minimized: constants', min.stats.constants, 1);
-  equal('pinned minimized: wires', min.stats.wires, 134);
+  equal('pinned minimized: wires', min.stats.wires, 194);
   equal('pinned minimized: maxDepth', min.stats.maxDepth, 3);
 
   const dir = buildCircuitverseProject(4, enginesDefault, { title: CV_TITLE, logicSource: 'direct' });
   equal('pinned direct: andGates', dir.stats.andGates, 49);
   equal('pinned direct: orGates', dir.stats.orGates, 9);
-  equal('pinned direct: wires', dir.stats.wires, 512);
+  equal('pinned direct: wires', dir.stats.wires, 583);
   check('direct mode has ≥ minimized AND gates (canonical ⊇ minimal)', dir.stats.andGates >= min.stats.andGates);
 
   // Renames only change labels — identical counts.

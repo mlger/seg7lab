@@ -209,7 +209,15 @@ function structuralChecks(project: CvProjectJson, inputBits: number, c: CaseChec
       c.check(Number.isInteger(j) && j >= 0 && j < nodes.length, `node ${i} connection ${j} in range`);
       c.check(nodes[j].connections.includes(i), `connection ${i}->${j} must be mutual`);
     }
-    if (nd.type === 2) c.equal(nd.connections.length, 2, `type-2 node ${i} must have exactly 2 connections`);
+    // Rail junction bends carry 3 connections ([descent, pin, next descent]) —
+    // the exact pattern CircuitVerse's own Combinational Analysis generator
+    // produces. Everything else must be a plain 2-connection wire pair.
+    if (nd.type === 2) {
+      c.check(
+        nd.connections.length === 2 || nd.connections.length === 3,
+        `type-2 node ${i} must have 2 connections (wire) or 3 (rail junction), got ${nd.connections.length}`,
+      );
+    }
   }
 
   // scope.nodes === sorted indices of all type-2 nodes.
@@ -230,8 +238,19 @@ function structuralChecks(project: CvProjectJson, inputBits: number, c: CaseChec
   for (const { type, comp } of comps) {
     c.check(comp.objectType === type, `component objectType '${comp.objectType}' matches its array '${type}'`);
     c.equal(typeof comp.label, 'string', `${type} label is a string`);
-    c.equal(comp.direction, 'RIGHT', `${type} direction`);
-    c.equal(comp.labelDirection, 'LEFT', `${type} labelDirection`);
+    // CA-style layout: Inputs and NotGates point DOWN (rails descend from
+    // them, exactly like circuitverse.org's Combinational Analysis output);
+    // everything else points RIGHT. Inputs carry their label ABOVE ('UP').
+    if (type === 'Input' || type === 'NotGate') {
+      c.equal(comp.direction, 'DOWN', `${type} direction`);
+    } else {
+      c.equal(comp.direction, 'RIGHT', `${type} direction`);
+    }
+    if (type === 'Input') {
+      c.equal(comp.labelDirection, 'UP', 'Input labelDirection');
+    } else {
+      c.equal(comp.labelDirection, 'LEFT', `${type} labelDirection`);
+    }
     c.check(typeof comp.propagationDelay === 'number', `${type} propagationDelay is a number`);
     c.check(comp.x % 10 === 0 && comp.y % 10 === 0, `${type} at (${comp.x},${comp.y}) on the 10-grid`);
     c.check(Array.isArray(comp.customData.constructorParamaters), `${type} constructorParamaters array`);
@@ -240,7 +259,7 @@ function structuralChecks(project: CvProjectJson, inputBits: number, c: CaseChec
 
     if (type === 'Input') {
       c.equal(JSON.stringify(nodeKeys), JSON.stringify(['output1']), 'Input node keys');
-      c.equal(cp[0], 'RIGHT', 'Input direction param');
+      c.equal(cp[0], 'DOWN', 'Input direction param');
       c.equal(cp[1], 1, 'Input bitWidth param');
       const layout = cp[2] as { x: number; y: number; id: string };
       c.check(!!layout && typeof layout.id === 'string' && /^[A-Za-z0-9]{20}$/.test(layout.id), 'Input layoutProperties id 20-char alnum');
@@ -267,7 +286,7 @@ function structuralChecks(project: CvProjectJson, inputBits: number, c: CaseChec
       c.equal(comp.propagationDelay, 0, 'ConstantVal propagationDelay 0');
     } else if (type === 'NotGate') {
       c.equal(JSON.stringify(nodeKeys), JSON.stringify(['inp1', 'output1']), 'NotGate node keys');
-      c.equal(JSON.stringify(cp), JSON.stringify(['RIGHT', 1]), 'NotGate constructorParamaters');
+      c.equal(JSON.stringify(cp), JSON.stringify(['DOWN', 1]), 'NotGate constructorParamaters');
       const inp = comp.customData.nodes.inp1 as number;
       const out = comp.customData.nodes.output1 as number;
       claim(inp, 'NotGate inp1');
@@ -336,6 +355,145 @@ function structuralChecks(project: CvProjectJson, inputBits: number, c: CaseChec
   );
   c.equal(new Set(inputIds).size, inputIds.length, 'Input layoutProperties ids unique');
   return scope;
+}
+
+/* ------------------------------------------------------------------ */
+/* Geometry layer — organized-wire invariants (CA-style layout)         */
+/*                                                                      */
+/* Mirrors CircuitVerse's rendering model: pin nodes render at          */
+/* parentOrigin + rotate(rawOffset, parentDirection) (node.js rotate:   */
+/* DOWN swaps coordinates), type-2 bends render at their absolute      */
+/* stored coordinates. A wire pair renders as a straight line between   */
+/* the two rendered endpoints — so "orthogonal in rendered space" is    */
+/* exactly what the imported canvas shows.                              */
+/* ------------------------------------------------------------------ */
+
+/** node.js rotate() — only RIGHT (identity) and DOWN ([y1, x1]) are used. */
+function rotateOffset(x: number, y: number, dir: unknown): [number, number] {
+  if (dir === 'DOWN') return [y, x];
+  return [x, y];
+}
+
+interface WireSeg { axis: 'h' | 'v'; c: number; a: number; b: number }
+interface CompBox { x1: number; y1: number; x2: number; y2: number; kind: string }
+
+function geometryChecks(scope: CvScopeJson, c: CaseChecker): void {
+  const nodes = scope.allNodes;
+
+  // Node index -> owning component (for pin coordinate resolution).
+  const ownerOf = new Map<number, { dir: unknown; ox: number; oy: number }>();
+  for (const { comp } of componentsOf(scope)) {
+    for (const v of Object.values(comp.customData.nodes)) {
+      const idxs = typeof v === 'number' ? [v] : (v as number[]);
+      for (const i of idxs) ownerOf.set(i, { dir: comp.direction, ox: comp.x, oy: comp.y });
+    }
+  }
+
+  // Rendered absolute coordinates of every node.
+  const abs = nodes.map((nd, i): { x: number; y: number } => {
+    if (nd.type === 2) return { x: nd.x, y: nd.y };
+    const o = ownerOf.get(i);
+    c.check(!!o, `pin node ${i} must belong to a component`);
+    const [rx, ry] = rotateOffset(nd.x, nd.y, o!.dir);
+    return { x: o!.ox + rx, y: o!.oy + ry };
+  });
+
+  // Unique wire pairs → rendered segments.
+  const seenPair = new Set<string>();
+  const segs: WireSeg[] = [];
+  let diagonals = 0;
+  nodes.forEach((nd, i) => {
+    for (const j of nd.connections) {
+      const k = i < j ? `${i},${j}` : `${j},${i}`;
+      if (seenPair.has(k)) continue;
+      seenPair.add(k);
+      const p = abs[i];
+      const q = abs[j];
+      if (p.y === q.y) segs.push({ axis: 'h', c: p.y, a: Math.min(p.x, q.x), b: Math.max(p.x, q.x) });
+      else if (p.x === q.x) segs.push({ axis: 'v', c: p.x, a: Math.min(p.y, q.y), b: Math.max(p.y, q.y) });
+      else diagonals++;
+    }
+  });
+  c.equal(diagonals, 0, 'every wire renders axis-aligned (no diagonals)');
+
+  // No two nodes share a rendered coordinate (would render as one dot).
+  const seenPt = new Map<string, number>();
+  for (const p of abs) {
+    const k = `${p.x},${p.y}`;
+    seenPt.set(k, (seenPt.get(k) ?? 0) + 1);
+  }
+  const coincident = [...seenPt.entries()].filter(([, n]) => n > 1);
+  c.equal(coincident.length, 0, `no coincident nodes (found ${coincident.slice(0, 5).map(([k, n]) => `${k}×${n}`).join(', ')})`);
+
+  // Component boxes (visual model — pins sit on box edges; derived from the
+  // CV sources: gates span input-pin to output-pin x, height by input count;
+  // SevenSegDisplay glyph spans x[-18,18]+dot(+22,+42), y[-38,38]).
+  const boxes: CompBox[] = [];
+  for (const { type, comp } of componentsOf(scope)) {
+    const { x, y } = comp;
+    if (type === 'Input' || type === 'ConstantVal') {
+      boxes.push({ x1: x - 10, y1: y - 10, x2: x + 10, y2: y + 10, kind: type });
+    } else if (type === 'NotGate') {
+      boxes.push({ x1: x - 14, y1: y - 10, x2: x + 14, y2: y + 10, kind: type });
+    } else if (type === 'AndGate' || type === 'OrGate') {
+      // Fixed 40px-tall body (customDraw: x -10..20, y -20..20, independent
+      // of input count) — input pins sit on stubs OUTSIDE the body, so wires
+      // ending at pins touch at most the body edge, never its interior.
+      boxes.push({ x1: x - 10, y1: y - 20, x2: x + 20, y2: y + 20, kind: type });
+    } else if (type === 'SevenSegDisplay') {
+      boxes.push({ x1: x - 20, y1: y - 40, x2: x + 25, y2: y + 45, kind: type });
+    }
+  }
+
+  // Zero overlapping collinear wire pairs (visual spaghetti root cause #1).
+  for (const axis of ['h', 'v'] as const) {
+    const list = segs.filter((s) => s.axis === axis);
+    const buckets = new Map<number, WireSeg[]>();
+    for (const s of list) {
+      const arr = buckets.get(s.c) ?? [];
+      arr.push(s);
+      buckets.set(s.c, arr);
+    }
+    const overlaps: string[] = [];
+    for (const [coord, arr] of buckets) {
+      for (let i = 0; i < arr.length; i++) {
+        for (let j = i + 1; j < arr.length; j++) {
+          const lo = Math.max(arr[i].a, arr[j].a);
+          const hi = Math.min(arr[i].b, arr[j].b);
+          if (lo < hi) overlaps.push(`${axis}@${coord} [${lo},${hi}]`);
+        }
+      }
+    }
+    c.equal(overlaps.length, 0, `no overlapping collinear ${axis === 'h' ? 'horizontal' : 'vertical'} wires (found ${overlaps.slice(0, 5).join('; ')})`);
+  }
+
+  // Zero wires passing through component bodies (spaghetti root cause #2).
+  const passThrough: string[] = [];
+  for (const s of segs) {
+    for (const b of boxes) {
+      const hit = s.axis === 'h'
+        ? s.c > b.y1 && s.c < b.y2 && s.a < b.x2 && s.b > b.x1
+        : s.c > b.x1 && s.c < b.x2 && s.a < b.y2 && s.b > b.y1;
+      if (hit) {
+        passThrough.push(`${s.axis}@${s.c} [${s.a},${s.b}] through ${b.kind} [${b.x1},${b.y1},${b.x2},${b.y2}]`);
+        break;
+      }
+    }
+  }
+  c.equal(passThrough.length, 0, `no wires through component bodies (found ${passThrough.slice(0, 5).join('; ')})`);
+
+  // Zero overlapping component boxes (no stacked gates).
+  const boxOverlaps: string[] = [];
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i];
+      const b = boxes[j];
+      if (a.x1 < b.x2 && a.x2 > b.x1 && a.y1 < b.y2 && a.y2 > b.y1) {
+        boxOverlaps.push(`${a.kind}[${a.x1},${a.y1},${a.x2},${a.y2}] × ${b.kind}[${b.x1},${b.y1},${b.x2},${b.y2}]`);
+      }
+    }
+  }
+  c.equal(boxOverlaps.length, 0, `no overlapping component boxes (found ${boxOverlaps.slice(0, 5).join('; ')})`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -477,6 +635,17 @@ function evalSop(terms: Term[], code: number, inputBits: number): 0 | 1 {
   return 0;
 }
 
+/**
+ * Balanced <=8-input OR-tree gate count for m sources — an independent
+ * mirror of the builder's tree plan (chunk gates + gates to combine them).
+ */
+function orTreeCount(m: number): number {
+  if (m <= 1) return 0;
+  if (m <= 8) return 1;
+  const chunks = Math.ceil(m / 8);
+  return chunks + orTreeCount(chunks);
+}
+
 /* ------------------------------------------------------------------ */
 /* Case runner                                                         */
 /* ------------------------------------------------------------------ */
@@ -502,6 +671,7 @@ function runCase(
     const result = buildCircuitverseProject(inputBits, engines, { title, logicSource });
     const project = validateDataReplica(result.json, title, c);
     const scope = structuralChecks(project, inputBits, c);
+    geometryChecks(scope, c);
 
     // Stats agree with the serialized file.
     const comps = componentsOf(scope);
@@ -661,6 +831,27 @@ const cases: CaseDef[] = [
     run: () => runCase('g: dontcare-direct', 4, dontCareTable, 'direct', (_ctx, c) => {
       const xRows = dontCareTable.rows.filter((r) => SEGMENT_NAMES.some((s) => r.outputs[s] === 'X'));
       c.equal(xRows.length, 6, 'table carries six all-X rows (codes 10-15)');
+    }),
+  },
+  {
+    // OR-tree torture case: 5-bit font in direct mode gives segments with up
+    // to 32 minterms — balanced <=8-input OR trees cascade right, and every
+    // geometric invariant must still hold at that scale.
+    name: 'i: font-5bit-direct',
+    run: () => runCase('i: font-5bit-direct', 5, font5Table, 'direct', ({ engines, stats, scope }, c) => {
+      const maxTerms = SEGMENT_NAMES.reduce((m, seg) => Math.max(m, engines[seg].ones.length), 0);
+      c.check(maxTerms > 8, `at least one segment exceeds 8 terms (max ${maxTerms}) — tree path exercised`);
+      const orGates = scope.OrGate as CvComponentJson[];
+      const maxFanIn = orGates.reduce((m, g) => Math.max(m, (g.customData.constructorParamaters[1] as number)), 0);
+      c.check(maxFanIn <= 8, `every OrGate has <= 8 inputs (max ${maxFanIn})`);
+      const treeSegments = SEGMENT_NAMES.filter((seg) => engines[seg].ones.length > 8);
+      for (const seg of treeSegments) {
+        const expected = orTreeCount(engines[seg].ones.length);
+        c.equal(stats.segments.find((s) => s.segment === seg)?.orGates, expected, `segment ${seg} OR-tree gate count`);
+      }
+      const minimized = buildCircuitverseProject(5, engines, { title: 'Verify font5-min-ref', logicSource: 'minimized' });
+      c.check(stats.orGates > minimized.stats.orGates, `direct orGates (${stats.orGates}) exceed minimized (${minimized.stats.orGates})`);
+      c.check(stats.maxDepth >= 4, `tree path depth >= 4 (NOT->AND->OR->OR), got ${stats.maxDepth}`);
     }),
   },
   {
