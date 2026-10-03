@@ -6,11 +6,18 @@
 
 import { useMemo } from 'react';
 import { useSimulator, resolveTablePreset, activeFontGlyphs } from '@/lib/store';
-import { computeEngines } from '@/logic/engine';
+import { computeEngines, type SegmentEngineMap } from '@/logic/engine';
 import { matchesTablePreset } from '@/logic/presets';
 import { isSegmentLit } from '@/logic/decoder';
 import { toBits } from '@/utils/binary';
-import type { SegmentEngineMap, SegmentName, SegmentOutput } from '@/types/simulator';
+import type {
+  CustomFont,
+  InvalidBehavior,
+  PresetLibrary,
+  SegmentName,
+  SegmentOutput,
+  TruthTable,
+} from '@/types/simulator';
 
 export function useEngines(): SegmentEngineMap {
   const truthTable = useSimulator((s) => s.truthTable);
@@ -62,7 +69,87 @@ export function useCurrentInput() {
 /**
  * Whether the truth table no longer equals the applied preset's table
  * (drives the "modified" indicator). No preset applied → never modified.
+ *
+ * The check (matchesTablePreset) is somewhat expensive, and this hook is
+ * instantiated independently by several components (header, truth table,
+ * display, preset gallery) — each of them re-runs it on every store change.
+ * A tiny module-level memo keyed on the identity of every input it reads lets
+ * all instances share one computation per store change.
  */
+interface PresetModifiedCache {
+  table: TruthTable;
+  behavior: InvalidBehavior;
+  fontStart: number;
+  tableStartCode: number;
+  customFont: CustomFont | null;
+  activeFontId: string;
+  appliedPresetId: string | null;
+  library: PresetLibrary;
+  result: boolean;
+}
+let presetModifiedCache: PresetModifiedCache | null = null;
+
+/**
+ * Memoized preset-modified computation shared by every usePresetModified()
+ * instance (module-level, so 4 hook consumers cost 1 computation per change).
+ * The result is a pure function of the inputs — the cache only short-circuits
+ * re-computation when every input still has the same identity, so render
+ * order can never change the outcome.
+ */
+function computePresetModified(
+  table: TruthTable,
+  behavior: InvalidBehavior,
+  fontStart: number,
+  tableStartCode: number,
+  customFont: CustomFont | null,
+  activeFontId: string,
+  appliedPresetId: string | null,
+  library: PresetLibrary,
+): boolean {
+  const cached = presetModifiedCache;
+  if (
+    cached !== null &&
+    cached.table === table &&
+    cached.behavior === behavior &&
+    cached.fontStart === fontStart &&
+    cached.tableStartCode === tableStartCode &&
+    cached.customFont === customFont &&
+    cached.activeFontId === activeFontId &&
+    cached.appliedPresetId === appliedPresetId &&
+    cached.library === library
+  ) {
+    return cached.result;
+  }
+  const preset = resolveTablePreset(appliedPresetId, library);
+  const result = preset
+    ? !matchesTablePreset(
+        table,
+        {
+          ...preset,
+          options: {
+            ...preset.options,
+            fontStart: preset.options?.fontStart ?? fontStart,
+            tableStartCode: preset.options?.tableStartCode ?? tableStartCode,
+          },
+        },
+        behavior,
+        activeFontGlyphs(customFont, activeFontId),
+      )
+    : false;
+  presetModifiedCache = {
+    table,
+    behavior,
+    fontStart,
+    tableStartCode,
+    customFont,
+    activeFontId,
+    appliedPresetId,
+    library,
+    result,
+  };
+  return result;
+}
+
 export function usePresetModified(): boolean {
   const table = useSimulator((s) => s.truthTable);
   const behavior = useSimulator((s) => s.invalidBehavior);
@@ -72,19 +159,20 @@ export function usePresetModified(): boolean {
   const activeFontId = useSimulator((s) => s.activeFontId);
   const appliedPresetId = useSimulator((s) => s.appliedPresetId);
   const library = useSimulator((s) => s.presetLibrary);
-  return useMemo(() => {
-    const preset = resolveTablePreset(appliedPresetId, library);
-    if (!preset) return false;
-    const effective = {
-      ...preset,
-      options: {
-        ...preset.options,
-        fontStart: preset.options?.fontStart ?? fontStart,
-        tableStartCode: preset.options?.tableStartCode ?? tableStartCode,
-      },
-    };
-    return !matchesTablePreset(table, effective, behavior, activeFontGlyphs(customFont, activeFontId));
-  }, [table, behavior, fontStart, tableStartCode, customFont, activeFontId, appliedPresetId, library]);
+  return useMemo(
+    () =>
+      computePresetModified(
+        table,
+        behavior,
+        fontStart,
+        tableStartCode,
+        customFont,
+        activeFontId,
+        appliedPresetId,
+        library,
+      ),
+    [table, behavior, fontStart, tableStartCode, customFont, activeFontId, appliedPresetId, library],
+  );
 }
 
 /** Info about the applied table preset for headers/toolbars. */

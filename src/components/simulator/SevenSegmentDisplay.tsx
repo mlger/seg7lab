@@ -13,6 +13,7 @@
 
 import { useId, useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { hexToRgba } from '@/lib/colors';
 import { HEX_PATTERNS } from '@/logic/truthTable';
 import { isSegmentLit, isSegmentUndefined } from '@/logic/decoder';
 import type {
@@ -23,7 +24,8 @@ import type {
 } from '@/types/simulator';
 
 interface SegmentGeometry {
-  points: string;
+  /** SVG polygon points — absent for the circular DP segment. */
+  points?: string;
   cx?: number;
   cy?: number;
   r?: number;
@@ -50,16 +52,6 @@ export interface SevenSegmentSvgProps {
   className?: string;
   svgRef?: React.Ref<SVGSVGElement>;
   title?: string;
-}
-
-function hexToRgba(hex: string, alpha: number): string {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
-  if (!m) return `rgba(255,45,45,${alpha})`;
-  const n = parseInt(m[1], 16);
-  const r = (n >> 16) & 255;
-  const g = (n >> 8) & 255;
-  const b = n & 255;
-  return `rgba(${r},${g},${b},${alpha})`;
 }
 
 export function SevenSegmentSvg({

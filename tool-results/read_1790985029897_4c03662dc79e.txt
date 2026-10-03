@@ -1,0 +1,720 @@
+     1→/**
+     2→ * Truth table: auto-generated for the selected input width, fully editable
+     3→ * (click an output cell to cycle 0 → 1 → X, or click a segment directly on the
+     4→ * row's preview glyph). Clicking a row selects that input.
+     5→ *
+     6→ * Features:
+     7→ *  - Live mini 7-segment preview of every row (derived from the table itself),
+     8→ *    shown after the Hex column; its segments are clickable to toggle cells.
+     9→ *  - Drag a row's preview glyph onto another row to copy its output pattern —
+    10→ *    inputs are excluded, they always stay untouched.
+    11→ *  - Input variables default to A B C D / A B C D E (A = MSB) and can be
+    12→ *    renamed by clicking a variable header — names flow through expressions,
+    13→ *    K-map, circuit and every export.
+    14→ *  - Row order can start from any code (e.g. ABCD = 0001, wrapping around).
+    15→ *  - Shift tools: rotate one row's values, one segment's column, or the whole
+    16→ *    table (all rows / all columns) — with one-level undo.
+    17→ *  - FONT preset window controls (which glyph starts the mapping).
+    18→ */
+    19→'use client';
+    20→
+    21→import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+    22→import { Table as TableIcon, ArrowLeftRight, ArrowUpDown, Undo2, Type as TypeIcon, RotateCcw, Pencil } from 'lucide-react';
+    23→import { useSimulator, activeFontGlyphs, resolveFontPreset } from '@/lib/store';
+    24→import { useEngines, useCurrentInput, usePresetModified, useAppliedTablePreset } from '@/lib/useEngine';
+    25→import { ExplainBlock } from './ExplainBlock';
+    26→import { GlyphPreview } from './SevenSegmentDisplay';
+    27→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    28→import { Badge } from '@/components/ui/badge';
+    29→import { Button } from '@/components/ui/button';
+    30→import { Input } from '@/components/ui/input';
+    31→import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+    32→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+    33→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+    34→import { cn } from '@/lib/utils';
+    35→import { SEGMENT_NAMES, type InputWidth, type SegmentName, type SegmentOutput, type TruthTableRow } from '@/types/simulator';
+    36→import { formatHex, inputVarNames } from '@/utils/binary';
+    37→import { fontCharAt, listedCodes, FONT_GROUPS } from '@/logic/font';
+    38→import { valueToChar } from '@/logic/truthTable';
+    39→import { toast } from '@/hooks/use-toast';
+    40→
+    41→function cellColor(v: SegmentOutput): string {
+    42→  return v === 1
+    43→    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+    44→    : v === 'X'
+    45→      ? 'border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+    46→      : 'border-transparent text-muted-foreground';
+    47→}
+    48→
+    49→/**
+    50→ * One memoized truth-table row. Extracted from the map so drag feedback
+    51→ * (dropRow changes) and other parent re-renders never re-render the other
+    52→ * 15–31 rows: every prop is a primitive, a stable ref from the immutable
+    53→ * store, or a useCallback handler, so React.memo's shallow compare holds.
+    54→ */
+    55→interface TruthRowProps {
+    56→  row: TruthTableRow;
+    57→  inputBits: InputWidth;
+    58→  /** Character label for the Char column (font glyph / hex digit / null). */
+    59→  char: string | null;
+    60→  active: boolean;
+    61→  isDragSource: boolean;
+    62→  isDropTarget: boolean;
+    63→  registerRef: (input: number, el: HTMLTableRowElement | null) => void;
+    64→  onSelectRow: (input: number) => void;
+    65→  onCycleCell: (input: number, segment: SegmentName) => void;
+    66→  onTogglePreviewSegment: (input: number, segment: SegmentName) => void;
+    67→  onDragRowStart: (input: number) => void;
+    68→  onDragRowEnd: () => void;
+    69→  onRowDrop: (e: React.DragEvent<HTMLTableRowElement>, targetInput: number) => void;
+    70→  /** Drop-hover highlight setter (parent guards against redundant updates). */
+    71→  onRowHover: (input: number) => void;
+    72→  onRowLeave: (input: number) => void;
+    73→}
+    74→
+    75→const TruthRow = memo(function TruthRow({
+    76→  row, inputBits, char, active, isDragSource, isDropTarget,
+    77→  registerRef, onSelectRow, onCycleCell, onTogglePreviewSegment,
+    78→  onDragRowStart, onDragRowEnd, onRowDrop, onRowHover, onRowLeave,
+    79→}: TruthRowProps) {
+    80→  const bits = row.input.toString(2).padStart(inputBits, '0');
+    81→  return (
+    82→    <TableRow
+    83→      ref={(el) => {
+    84→        registerRef(row.input, el);
+    85→      }}
+    86→      className={cn(
+    87→        'cursor-pointer',
+    88→        active ? 'bg-primary/10' : 'hover:bg-muted/50',
+    89→        isDragSource && 'opacity-50',
+    90→        isDropTarget && 'bg-primary/15 ring-2 ring-inset ring-primary/50',
+    91→      )}
+    92→      onClick={() => onSelectRow(row.input)}
+    93→      aria-label={`Select input row ${row.input}`}
+    94→      onDragOver={(e) => {
+    95→        if (!e.dataTransfer.types.includes('text/x-sevenseg-row')) return;
+    96→        e.preventDefault();
+    97→        e.dataTransfer.dropEffect = 'copy';
+    98→        onRowHover(row.input);
+    99→      }}
+   100→      onDragLeave={(e) => {
+   101→        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+   102→          onRowLeave(row.input);
+   103→        }
+   104→      }}
+   105→      onDrop={(e) => onRowDrop(e, row.input)}
+   106→    >
+   107→      {[...bits].map((b, i) => (
+   108→        <TableCell key={i} className="px-2 py-1 text-center font-mono text-xs tabular-nums">
+   109→          {b}
+   110→        </TableCell>
+   111→      ))}
+   112→      <TableCell className="px-2 py-1 text-center font-mono text-xs tabular-nums">
+   113→        {row.input}
+   114→      </TableCell>
+   115→      <TableCell className="px-2 py-1 text-center font-mono text-xs">
+   116→        {formatHex(row.input)}
+   117→      </TableCell>
+   118→      <TableCell className="border-r border-border/70 px-2 py-1 text-center font-mono text-xs">
+   119→        {char === null ? '' : char === ' ' ? '␠' : char}
+   120→      </TableCell>
+   121→      <TableCell className="px-1 py-0.5 text-center">
+   122→        <div
+   123→          className="group relative flex cursor-grab flex-col items-center leading-none active:cursor-grabbing"
+   124→          draggable
+   125→          onDragStart={(e) => {
+   126→            e.dataTransfer.setData('text/x-sevenseg-row', String(row.input));
+   127→            e.dataTransfer.effectAllowed = 'copy';
+   128→            onDragRowStart(row.input);
+   129→          }}
+   130→          onDragEnd={() => {
+   131→            onDragRowEnd();
+   132→          }}
+   133→          title={`Pattern of m${row.input} — click a segment to toggle it (0 ↔ 1); drag onto another row to copy this pattern (inputs are excluded and stay unchanged)`}
+   134→        >
+   135→          <GlyphPreview
+   136→            outputs={row.outputs}
+   137→            interactive
+   138→            onSegmentClick={(seg) => {
+   139→              onTogglePreviewSegment(row.input, seg);
+   140→            }}
+   141→            className="relative z-0 h-10 origin-center transition-transform duration-150 ease-out group-hover:z-20 group-hover:scale-[1.65]"
+   142→            label={`Pattern of row ${row.input}${char ? ` (${char})` : ''} — segments clickable`}
+   143→          />
+   144→        </div>
+   145→      </TableCell>
+   146→      {SEGMENT_NAMES.map((seg) => {
+   147→        const v = row.outputs[seg];
+   148→        return (
+   149→          <TableCell
+   150→            key={seg}
+   151→            className={cn('px-1 py-1 text-center', seg === 'DP' && 'border-l border-border/70')}
+   152→          >
+   153→            <button
+   154→              type="button"
+   155→              className={cn(
+   156→                'inline-flex h-7 w-7 items-center justify-center rounded border font-mono text-xs font-semibold transition-all hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+   157→                cellColor(v),
+   158→              )}
+   159→              onClick={(e) => {
+   160→                e.stopPropagation();
+   161→                onCycleCell(row.input, seg);
+   162→              }}
+   163→              aria-label={`Row ${row.input} segment ${seg}: ${v}, click to cycle`}
+   164→              title={`m${row.input} · ${seg} = ${v} — click to cycle`}
+   165→            >
+   166→              {v}
+   167→            </button>
+   168→          </TableCell>
+   169→        );
+   170→      })}
+   171→    </TableRow>
+   172→  );
+   173→});
+   174→
+   175→export function TruthTableCard() {
+   176→  const table = useSimulator((s) => s.truthTable);
+   177→  const currentInput = useSimulator((s) => s.currentInput);
+   178→  const setInput = useSimulator((s) => s.setInput);
+   179→  const cycleCell = useSimulator((s) => s.cycleCell);
+   180→  const explain = useSimulator((s) => s.explainMode);
+   181→  const activeSegment = useSimulator((s) => s.activeSegment);
+   182→  const setActiveSegment = useSimulator((s) => s.setActiveSegment);
+   183→  const inputBits = useSimulator((s) => s.inputBits);
+   184→  const displayMode = useSimulator((s) => s.displayMode);
+   185→  const tableStartCode = useSimulator((s) => s.tableStartCode);
+   186→  const setTableStartCode = useSimulator((s) => s.setTableStartCode);
+   187→  const fontStart = useSimulator((s) => s.fontStart);
+   188→  const setFontStart = useSimulator((s) => s.setFontStart);
+   189→  const stepFontStart = useSimulator((s) => s.stepFontStart);
+   190→  const applyFontPreset = useSimulator((s) => s.applyFontPreset);
+   191→  const reapplyPreset = useSimulator((s) => s.reapplyPreset);
+   192→  const customFont = useSimulator((s) => s.customFont);
+   193→  const activeFontId = useSimulator((s) => s.activeFontId);
+   194→  const presetLibrary = useSimulator((s) => s.presetLibrary);
+   195→  const clearCustomFont = useSimulator((s) => s.clearCustomFont);
+   196→  const shiftRow = useSimulator((s) => s.shiftRow);
+   197→  const shiftColumn = useSimulator((s) => s.shiftColumn);
+   198→  const shiftAllRows = useSimulator((s) => s.shiftAllRows);
+   199→  const shiftAllColumns = useSimulator((s) => s.shiftAllColumns);
+   200→  const undoShift = useSimulator((s) => s.undoShift);
+   201→  const undoSnapshot = useSimulator((s) => s.undoSnapshot);
+   202→  const toggleSegmentOnDisplay = useSimulator((s) => s.toggleSegmentOnDisplay);
+   203→  const setRowPattern = useSimulator((s) => s.setRowPattern);
+   204→  const setVariableName = useSimulator((s) => s.setVariableName);
+   205→  const resetVariableNames = useSimulator((s) => s.resetVariableNames);
+   206→  const engines = useEngines();
+   207→  const current = useCurrentInput();
+   208→  const modified = usePresetModified();
+   209→  const applied = useAppliedTablePreset();
+   210→  const rowRefs = useRef<Record<number, HTMLTableRowElement | null>>({});
+   211→  const [startCodeText, setStartCodeText] = useState<string | null>(null);
+   212→
+   213→  /* ---- inline variable-name editing ---- */
+   214→  const [editingVar, setEditingVar] = useState<number | null>(null);
+   215→  const [varDraft, setVarDraft] = useState('');
+   216→
+   217→  /* ---- row drag-and-drop (copy output pattern; inputs excluded) ---- */
+   218→  const [dragRow, setDragRow] = useState<number | null>(null);
+   219→  const [dropRow, setDropRow] = useState<number | null>(null);
+   220→
+   221→  const varNames = useSimulator((s) => s.variableNames);
+   222→  const namesCustomized = varNames.join('') !== inputVarNames(inputBits).join('');
+   223→  const glyphs = activeFontGlyphs(customFont, activeFontId);
+   224→  const activeFontName = resolveFontPreset(activeFontId, presetLibrary)?.name ?? 'Chart font';
+   225→  const fontMode = displayMode === 'font';
+   226→
+   227→  const commitVarName = (index: number, raw: string) => {
+   228→    setEditingVar(null);
+   229→    const clean = raw.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 3);
+   230→    if (!clean || clean === varNames[index]) return;
+   231→    if (varNames.some((n, i) => i !== index && n === clean)) {
+   232→      toast({
+   233→        title: 'Name already in use',
+   234→        description: `“${clean}” is taken by another variable — names must stay unique.`,
+   235→        variant: 'destructive',
+   236→      });
+   237→      return;
+   238→    }
+   239→    setVariableName(index, clean);
+   240→  };
+   241→
+   242→  const handleRowDrop = useCallback((e: React.DragEvent<HTMLTableRowElement>, targetInput: number) => {
+   243→    e.preventDefault();
+   244→    setDropRow(null);
+   245→    const source = Number(e.dataTransfer.getData('text/x-sevenseg-row'));
+   246→    if (!Number.isInteger(source) || source === targetInput || source < 0 || source >= table.rows.length) return;
+   247→    const sourceRow = table.rows.find((r) => r.input === source);
+   248→    if (!sourceRow) return;
+   249→    setRowPattern(targetInput, sourceRow.outputs);
+   250→    toast({
+   251→      title: 'Pattern copied',
+   252→      description: `m${source} → m${targetInput}: segment outputs copied, inputs excluded (row stays ${targetInput.toString(2).padStart(inputBits, '0')}).`,
+   253→    });
+   254→  }, [table, inputBits, setRowPattern]);
+   255→
+   256→  /* ---- stable per-row handlers (keep TruthRow memoization effective) ---- */
+   257→  const registerRowRef = useCallback((input: number, el: HTMLTableRowElement | null) => {
+   258→    rowRefs.current[input] = el;
+   259→  }, []);
+   260→  const handleSelectRow = useCallback((input: number) => {
+   261→    setInput(input);
+   262→  }, [setInput]);
+   263→  const handleTogglePreviewSegment = useCallback((input: number, seg: SegmentName) => {
+   264→    setInput(input);
+   265→    toggleSegmentOnDisplay(input, seg);
+   266→  }, [setInput, toggleSegmentOnDisplay]);
+   267→  const handleDragRowStart = useCallback((input: number) => {
+   268→    setDragRow(input);
+   269→  }, []);
+   270→  const handleDragRowEnd = useCallback(() => {
+   271→    setDragRow(null);
+   272→    setDropRow(null);
+   273→  }, []);
+   274→  /** Only move the highlight when the hovered row actually changed — repeated
+   275→   *  dragover events on the same row bail out without a re-render. */
+   276→  const handleRowHover = useCallback((input: number) => {
+   277→    setDropRow((prev) => (prev === input ? prev : input));
+   278→  }, []);
+   279→  const handleRowLeave = useCallback((input: number) => {
+   280→    setDropRow((prev) => (prev === input ? null : prev));
+   281→  }, []);
+   282→
+   283→  /** Rows in listed order (from tableStartCode, wrapping). */
+   284→  const orderedRows = useMemo(
+   285→    () => listedCodes(inputBits, tableStartCode).map((code) => table.rows[code]),
+   286→    [table, inputBits, tableStartCode],
+   287→  );
+   288→
+   289→  /** Character label for a row: font glyph, hex digit, or none. */
+   290→  const rowChar = useMemo(() => {
+   291→    return (code: number): string | null => {
+   292→      if (fontMode) return fontCharAt(code, inputBits, fontStart, tableStartCode, glyphs);
+   293→      if (displayMode === 'hex') return valueToChar(code);
+   294→      if (displayMode === 'decimal') return code <= 9 ? String(code) : null;
+   295→      return null;
+   296→    };
+   297→  }, [fontMode, displayMode, inputBits, fontStart, tableStartCode, glyphs]);
+   298→
+   299→  useEffect(() => {
+   300→    rowRefs.current[currentInput]?.scrollIntoView({ block: 'nearest' });
+   301→  }, [currentInput]);
+   302→
+   303→  const totalOnes = SEGMENT_NAMES.filter((s) => engines[s].ones.length > 0).length;
+   304→
+   305→  const applyStartCode = (raw: string) => {
+   306→    const cleaned = raw.replace(/[^01]/g, '');
+   307→    if (cleaned.length !== inputBits) return; // E-240 shown via title
+   308→    const v = parseInt(cleaned, 2);
+   309→    if (!Number.isNaN(v)) setTableStartCode(v);
+   310→    setStartCodeText(null);
+   311→  };
+   312→
+   313→  const startCodeDisplay =
+   314→    startCodeText ?? tableStartCode.toString(2).padStart(inputBits, '0');
+   315→
+   316→  return (
+   317→    <Card>
+   318→      <CardHeader className="pb-3">
+   319→        <div className="flex flex-wrap items-center justify-between gap-2">
+   320→          <CardTitle className="flex items-center gap-2 text-sm font-semibold tracking-wide">
+   321→            <TableIcon className="h-4 w-4 text-muted-foreground" aria-hidden />
+   322→            TRUTH TABLE
+   323→          </CardTitle>
+   324→          <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+   325→            <Badge variant="secondary" className="font-mono">
+   326→              {table.rows.length} rows × {SEGMENT_NAMES.length} outputs
+   327→            </Badge>
+   328→            <span className="inline-flex items-center gap-1">
+   329→              <span className={cn('h-1.5 w-1.5 rounded-full', 'animate-pulse bg-emerald-500')} aria-hidden />
+   330→              live
+   331→            </span>
+   332→            <span>{totalOnes} active segments</span>
+   333→          </div>
+   334→        </div>
+   335→      </CardHeader>
+   336→      <CardContent className="space-y-3">
+   337→        {/* ---- toolbar: start code · font window · shifts ---- */}
+   338→        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-muted/40 px-3 py-2">
+   339→          {/* start code */}
+   340→          <div className="flex items-center gap-1.5">
+   341→            <span className="text-[11px] font-medium text-muted-foreground">Rows start at</span>
+   342→            <Input
+   343→              value={startCodeDisplay}
+   344→              onChange={(e) => setStartCodeText(e.target.value.replace(/[^01]/g, '').slice(0, inputBits))}
+   345→              onBlur={() => applyStartCode(startCodeText ?? '')}
+   346→              onKeyDown={(e) => {
+   347→                if (e.key === 'Enter') applyStartCode(startCodeText ?? '');
+   348→              }}
+   349→              className="h-7 w-[4.5rem] px-2 text-center font-mono text-xs"
+   350→              aria-label={`Starting input code (binary, ${inputBits} bits)`}
+   351→              title={`First row's ${varNames.join('')} code, wraps around (e.g. 0001 lists 0001…1111, 0000 last)`}
+   352→              inputMode="numeric"
+   353→            />
+   354→            <Button
+   355→              variant="ghost"
+   356→              size="sm"
+   357→              className="h-7 px-2 text-[11px]"
+   358→              onClick={() => setTableStartCode(0)}
+   359→              title="Reset row order to 0000"
+   360→            >
+   361→              0{''}
+   362→              {'0'.repeat(inputBits - 1)}
+   363→            </Button>
+   364→          </div>
+   365→
+   366→          {/* font window (FONT preset only) */}
+   367→          {fontMode && (
+   368→            <div className="flex items-center gap-1.5">
+   369→              <TypeIcon className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+   370→              <span className="text-[11px] font-medium text-muted-foreground">Font window</span>
+   371→              <Button
+   372→                variant="outline"
+   373→                size="sm"
+   374→                className="h-7 w-7 p-0"
+   375→                onClick={() => stepFontStart(-1)}
+   376→                aria-label="Previous glyph in font"
+   377→                title="Previous glyph (window scrolls backward through the font)"
+   378→              >
+   379→                −
+   380→              </Button>
+   381→              <Select
+   382→                value={String(fontStart)}
+   383→                onValueChange={(v) => setFontStart(Number(v))}
+   384→              >
+   385→                <SelectTrigger
+   386→                  className="h-7 w-[7.5rem] px-2 font-mono text-xs"
+   387→                  aria-label="First glyph of the font window"
+   388→                  title={`Glyph mapped to the first listed code (${glyphs.length} glyphs total)`}
+   389→                >
+   390→                  <SelectValue />
+   391→                </SelectTrigger>
+   392→                <SelectContent className="max-h-72">
+   393→                  {customFont ? (
+   394→                    glyphs.slice(0, 400).map((g, i) => (
+   395→                      <SelectItem key={i} value={String(i)} className="font-mono text-xs">
+   396→                        {g.char === ' ' ? '␠ space' : g.char} · {i}
+   397→                      </SelectItem>
+   398→                    ))
+   399→                  ) : (
+   400→                    FONT_GROUPS.map((group) => (
+   401→                      <div key={group.label}>
+   402→                        <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+   403→                          {group.label}
+   404→                        </div>
+   405→                        {glyphs.slice(group.from, group.to + 1).map((g, i) => {
+   406→                          const idx = group.from + i;
+   407→                          return (
+   408→                            <SelectItem key={idx} value={String(idx)} className="font-mono text-xs">
+   409→                              {g.char === ' ' ? '␠ space' : g.char} · {g.segments || 'blank'}
+   410→                            </SelectItem>
+   411→                          );
+   412→                        })}
+   413→                      </div>
+   414→                    ))
+   415→                  )}
+   416→                </SelectContent>
+   417→              </Select>
+   418→              <Button
+   419→                variant="outline"
+   420→                size="sm"
+   421→                className="h-7 w-7 p-0"
+   422→                onClick={() => stepFontStart(1)}
+   423→                aria-label="Next glyph in font"
+   424→                title="Next glyph (window scrolls forward through the font)"
+   425→              >
+   426→                +
+   427→              </Button>
+   428→              {customFont && (
+   429→                <Popover>
+   430→                  <PopoverTrigger asChild>
+   431→                    <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]">
+   432→                      {activeFontName}
+   433→                    </Button>
+   434→                  </PopoverTrigger>
+   435→                  <PopoverContent align="start" className="w-64">
+   436→                    <p className="text-xs">
+   437→                      Font <span className="font-semibold">{activeFontName}</span> with{' '}
+   438→                      {glyphs.length} glyphs is active — pick more fonts in the preset gallery
+   439→                      (header button).
+   440→                    </p>
+   441→                    <Button
+   442→                      variant="outline"
+   443→                      size="sm"
+   444→                      className="mt-2 h-7 w-full text-xs"
+   445→                      onClick={clearCustomFont}
+   446→                    >
+   447→                      Restore built-in chart font (74 glyphs)
+   448→                    </Button>
+   449→                  </PopoverContent>
+   450→                </Popover>
+   451→              )}
+   452→              {!customFont && activeFontId === 'builtin:calculator' && (
+   453→                <span className="text-[11px] text-muted-foreground" title="Calculator HEX font active — switch fonts in the preset gallery">
+   454→                  {activeFontName}
+   455→                </span>
+   456→              )}
+   457→            </div>
+   458→          )}
+   459→
+   460→          <div className="ml-auto flex flex-wrap items-center gap-2">
+   461→            {/* shift tools */}
+   462→            <div className="flex items-center gap-1 rounded-md border p-0.5" role="group" aria-label="Row shifts">
+   463→              <span className="px-1 text-[10px] font-medium text-muted-foreground" title={`Row m${currentInput} (selected)`}>
+   464→                row
+   465→              </span>
+   466→              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => shiftRow(currentInput, -1)} aria-label="Rotate selected row's values left" title={`Rotate row m${currentInput}'s values left (A←B←…←DP)`}>
+   467→                <ArrowLeftRight className="h-3 w-3 rotate-180" aria-hidden />
+   468→              </Button>
+   469→              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => shiftRow(currentInput, 1)} aria-label="Rotate selected row's values right" title={`Rotate row m${currentInput}'s values right (A→B→…→DP)`}>
+   470→                <ArrowLeftRight className="h-3 w-3" aria-hidden />
+   471→              </Button>
+   472→            </div>
+   473→            <div className="flex items-center gap-1 rounded-md border p-0.5" role="group" aria-label="Column shifts">
+   474→              <span className="px-1 text-[10px] font-medium text-muted-foreground" title={`Column ${activeSegment} (click a segment header to change)`}>
+   475→                col {activeSegment}
+   476→              </span>
+   477→              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => shiftColumn(activeSegment, -1)} aria-label={`Rotate segment ${activeSegment} column up`} title={`Rotate column ${activeSegment}'s values up (click a segment header to pick another)`}>
+   478→                <ArrowUpDown className="h-3 w-3 rotate-180" aria-hidden />
+   479→              </Button>
+   480→              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => shiftColumn(activeSegment, 1)} aria-label={`Rotate segment ${activeSegment} column down`} title={`Rotate column ${activeSegment}'s values down`}>
+   481→                <ArrowUpDown className="h-3 w-3" aria-hidden />
+   482→              </Button>
+   483→            </div>
+   484→            <div className="flex items-center gap-1 rounded-md border p-0.5" role="group" aria-label="Shift everything">
+   485→              <span className="px-1 text-[10px] font-medium text-muted-foreground">all</span>
+   486→              <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => shiftAllRows(-1)} title="Rotate every row's pattern up one position (wrap)">
+   487→                rows ↑
+   488→              </Button>
+   489→              <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => shiftAllRows(1)} title="Rotate every row's pattern down one position (wrap)">
+   490→                rows ↓
+   491→              </Button>
+   492→              <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => shiftAllColumns(-1)} title="Rotate every segment column up one position (wrap)">
+   493→                cols ↑
+   494→              </Button>
+   495→              <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => shiftAllColumns(1)} title="Rotate every segment column down one position (wrap)">
+   496→                cols ↓
+   497→              </Button>
+   498→            </div>
+   499→            <Button
+   500→              variant="outline"
+   501→              size="sm"
+   502→              className="h-6 gap-1 px-2 text-[10px]"
+   503→              onClick={undoShift}
+   504→              disabled={!undoSnapshot}
+   505→              aria-label="Undo last shift"
+   506→              title="Undo the last shift operation"
+   507→            >
+   508→              <Undo2 className="h-3 w-3" aria-hidden /> undo
+   509→            </Button>
+   510→            {modified && applied.id && (
+   511→              <Button
+   512→                variant="ghost"
+   513→                size="sm"
+   514→                className="h-6 gap-1 px-2 text-[10px] text-amber-600 dark:text-amber-400"
+   515→                onClick={fontMode ? applyFontPreset : reapplyPreset}
+   516→                title={`Discard edits and re-apply the preset "${applied.name}"`}
+   517→              >
+   518→                <RotateCcw className="h-3 w-3" aria-hidden /> re-apply {fontMode ? 'font' : 'preset'}
+   519→              </Button>
+   520→            )}
+   521→          </div>
+   522→        </div>
+   523→
+   524→        <div className="max-h-96 overflow-auto rounded-lg border custom-scroll">
+   525→          <Table className="min-w-[720px] border-collapse text-sm">
+   526→            <TableHeader className="sticky top-0 z-10">
+   527→              <TableRow className="bg-muted hover:bg-muted">
+   528→                <TableHead
+   529→                  colSpan={varNames.length + 3}
+   530→                  className="border-r border-border/70 bg-muted px-3 py-1.5 text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground"
+   531→                >
+   532→                  <span className="inline-flex items-center gap-1.5">
+   533→                    Inputs
+   534→                    {namesCustomized && (
+   535→                      <button
+   536→                        type="button"
+   537→                        onClick={resetVariableNames}
+   538→                        className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 font-mono text-[10px] font-normal normal-case tracking-normal transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+   539→                        title={`Reset variable names to ${inputVarNames(inputBits).join(' ')}`}
+   540→                        aria-label="Reset variable names to defaults"
+   541→                      >
+   542→                        <RotateCcw className="h-2.5 w-2.5" aria-hidden /> {varNames.join('')}
+   543→                      </button>
+   544→                    )}
+   545→                  </span>
+   546→                </TableHead>
+   547→                <TableHead
+   548→                  colSpan={SEGMENT_NAMES.length + 1}
+   549→                  className="bg-muted px-3 py-1.5 text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground"
+   550→                >
+   551→                  Segment outputs (click to edit: 0 → 1 → X)
+   552→                </TableHead>
+   553→              </TableRow>
+   554→              <TableRow className="bg-muted/80 hover:bg-muted/80">
+   555→                {varNames.map((v, i) => (
+   556→                  <TableHead key={`${i}-${v}`} className="bg-muted/80 px-1 py-1 text-center font-mono text-xs">
+   557→                    {editingVar === i ? (
+   558→                      <Input
+   559→                        autoFocus
+   560→                        value={varDraft}
+   561→                        onChange={(e) => setVarDraft(e.target.value.slice(0, 8))}
+   562→                        onBlur={() => commitVarName(i, varDraft)}
+   563→                        onKeyDown={(e) => {
+   564→                          if (e.key === 'Enter') commitVarName(i, varDraft);
+   565→                          if (e.key === 'Escape') setEditingVar(null);
+   566→                        }}
+   567→                        className="h-6 w-12 px-1 text-center font-mono text-xs"
+   568→                        aria-label={`Rename variable ${v}`}
+   569→                        title="Enter to apply · Escape to cancel"
+   570→                      />
+   571→                    ) : (
+   572→                      <button
+   573→                        type="button"
+   574→                        onClick={() => {
+   575→                          setEditingVar(i);
+   576→                          setVarDraft(v);
+   577→                        }}
+   578→                        className="group/var inline-flex items-center gap-0.5 rounded border-b border-dashed border-muted-foreground/60 px-1.5 py-0.5 font-mono text-xs transition-colors hover:border-foreground/60 hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+   579→                        title={`Rename variable ${v} (weight ${1 << (inputBits - 1 - i)}) — names flow into expressions, K-map, circuit and exports`}
+   580→                        aria-label={`Rename variable ${v}`}
+   581→                      >
+   582→                        {v}
+   583→                        <Pencil className="h-2.5 w-2.5 opacity-0 transition-opacity group-hover/var:opacity-60" aria-hidden />
+   584→                      </button>
+   585→                    )}
+   586→                  </TableHead>
+   587→                ))}
+   588→                <TableHead className="bg-muted/80 px-2 py-1 text-center font-mono text-xs">Dec</TableHead>
+   589→                <TableHead className="bg-muted/80 px-2 py-1 text-center font-mono text-xs">Hex</TableHead>
+   590→                <TableHead className="border-r border-border/70 bg-muted/80 px-2 py-1 text-center font-mono text-xs">
+   591→                  {fontMode ? 'Char' : '·'}
+   592→                </TableHead>
+   593→                <TableHead
+   594→                  className="bg-muted/80 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground"
+   595→                  title="Live pattern preview — click a segment to toggle it; drag onto another row to copy the pattern (inputs stay unchanged)"
+   596→                >
+   597→                  Preview
+   598→                </TableHead>
+   599→                {SEGMENT_NAMES.map((seg) => (
+   600→                  <TableHead key={seg} className="bg-muted/80 p-0.5 text-center">
+   601→                    <button
+   602→                      type="button"
+   603→                      className={cn(
+   604→                        'w-full rounded px-1 py-1 font-mono text-xs transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+   605→                        seg === activeSegment && 'bg-accent text-accent-foreground',
+   606→                        seg === 'DP' && 'border-l border-border/70',
+   607→                      )}
+   608→                      onClick={() => setActiveSegment(seg)}
+   609→                      aria-pressed={seg === activeSegment}
+   610→                      title={`Output segment ${seg} — click to target column shifts`}
+   611→                    >
+   612→                      {seg}
+   613→                    </button>
+   614→                  </TableHead>
+   615→                ))}
+   616→              </TableRow>
+   617→            </TableHeader>
+   618→            <TableBody>
+   619→              {orderedRows.map((row) =>
+   620→                row ? (
+   621→                  <TruthRow
+   622→                    key={row.input}
+   623→                    row={row}
+   624→                    inputBits={inputBits}
+   625→                    char={rowChar(row.input)}
+   626→                    active={row.input === currentInput}
+   627→                    isDragSource={dragRow === row.input}
+   628→                    isDropTarget={dropRow === row.input && dragRow !== null && dragRow !== row.input}
+   629→                    registerRef={registerRowRef}
+   630→                    onSelectRow={handleSelectRow}
+   631→                    onCycleCell={cycleCell}
+   632→                    onTogglePreviewSegment={handleTogglePreviewSegment}
+   633→                    onDragRowStart={handleDragRowStart}
+   634→                    onDragRowEnd={handleDragRowEnd}
+   635→                    onRowDrop={handleRowDrop}
+   636→                    onRowHover={handleRowHover}
+   637→                    onRowLeave={handleRowLeave}
+   638→                  />
+   639→                ) : null,
+   640→              )}
+   641→            </TableBody>
+   642→          </Table>
+   643→        </div>
+   644→
+   645→        <p className="text-[11px] leading-snug text-muted-foreground">
+   646→          Every row shows a <span className="font-medium">live preview</span> (after the Hex column) of
+   647→          what the display renders for that input — its segments are directly clickable to toggle
+   648→          0 ↔ 1, and dragging a preview onto another row copies that pattern (inputs are excluded
+   649→          and never change). Input variables are <span className="font-mono">{varNames.join(' ')}</span> —
+   650→          click a variable header to rename it. Rows are listed starting from{' '}
+   651→          <span className="font-mono">{tableStartCode.toString(2).padStart(inputBits, '0')}</span>
+   652→          {tableStartCode !== 0 && ' (wrapping around)'}. The shift tools rotate values within the
+   653→          selected row, within the selected segment column (click a segment header to pick it), or
+   654→          across the whole table — every change instantly re-derives the K-maps, Boolean
+   655→          expressions, logic circuit and display.
+   656→        </p>
+   657→
+   658→        {explain && (
+   659→          <ExplainBlock title="How the truth table works">
+   660→            <p>
+   661→              A truth table lists every input combination and the required output for each segment.
+   662→              With {current.bits} inputs there are 2^{current.bits} = {table.rows.length} rows. Row{' '}
+   663→              <span className="font-mono">m{current.input}</span> is currently active
+   664→              (<span className="font-mono">{current.binary}</span>).
+   665→              {tableStartCode !== 0 && (
+   666→                <>
+   667→                  {' '}The row order starts at{' '}
+   668→                  <span className="font-mono">
+   669→                    {tableStartCode.toString(2).padStart(inputBits, '0')}
+   670→                  </span>{' '}
+   671→                  because the start code is set to {tableStartCode} — the mapping itself is
+   672→                  unchanged, only the listing order (and font assignment order) rotates.
+   673→                </>
+   674→              )}
+   675→            </p>
+   676→            <p>
+   677→              For segment <span className="font-mono">{activeSegment}</span>, the minterm set is{' '}
+   678→              <span className="font-mono">Σm({engines[activeSegment].ones.join(', ') || '—'})</span>{' '}
+   679→              and the don&apos;t-cares are{' '}
+   680→              <span className="font-mono">d({engines[activeSegment].dontCares.join(', ') || '—'})</span>.
+   681→              Minterms are rows where the output is 1; the minimizer may treat X rows as either 0 or 1,
+   682→              whichever yields the simplest logic.
+   683→            </p>
+   684→            <p>
+   685→              The preview column is a direct editor: click any segment of a row&apos;s glyph to toggle
+   686→              that single cell between 0 and 1 (a don&apos;t-care becomes 1) — the same edit the big
+   687→              display offers, one row at a time. Dragging a preview glyph onto another row copies
+   688→              its segment outputs to the target row; the input columns are excluded from the drag,
+   689→              so the mapping (which input shows which pattern) is what changes, never the inputs
+   690→              themselves.
+   691→            </p>
+   692→            <p>
+   693→              Variables default to <span className="font-mono">{inputVarNames(inputBits).join(' ')}</span>{' '}
+   694→              (MSB first, {varNames[0]} has weight {1 << (inputBits - 1)}). Click a variable header in
+   695→              the table to rename it (A-Z, 0-9, _; up to 3 characters, unique) — the new name
+   696→              immediately appears in the Boolean expressions, K-map labels, circuit inputs, parser
+   697→              and every file export. When the input width changes, names reset to the defaults.
+   698→            </p>
+   699→            {fontMode && (
+   700→              <p>
+   701→                The FONT preset maps {glyphs.length} glyphs from the reference chart onto the codes
+   702→                in listed order: glyph <span className="font-mono">&quot;{glyphs[fontStart]?.char}&quot;</span>{' '}
+   703→                (index {fontStart}) is assigned to{' '}
+   704→                <span className="font-mono">{tableStartCode.toString(2).padStart(inputBits, '0')}</span>, the
+   705→                next glyph to the next code, wrapping around both the font and the code space.
+   706→              </p>
+   707→            )}
+   708→            <p>
+   709→              Shift operations are pattern tools: rotating a row slides its segment values
+   710→              (A→B→…→DP→A), rotating a column slides one segment&apos;s outputs across codes, and
+   711→              the &quot;all&quot; buttons rotate the entire mapping — useful for building scrolling
+   712→              marquees or exploring how K-map groupings change.
+   713→            </p>
+   714→          </ExplainBlock>
+   715→        )}
+   716→      </CardContent>
+   717→    </Card>
+   718→  );
+   719→}
+   720→

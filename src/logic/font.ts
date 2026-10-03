@@ -181,8 +181,3 @@ export function fontCharAt(
   const glyph = glyphs[((Math.round(fontStart) % glyphs.length) + glyphs.length + i) % glyphs.length];
   return glyph.char;
 }
-
-/** Index of a glyph in a font by its char label (first match), or -1. */
-export function fontIndexOf(char: string, glyphs: FontGlyph[] = FONT_GLYPHS): number {
-  return glyphs.findIndex((g) => g.char === char);
-}

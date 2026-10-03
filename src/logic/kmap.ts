@@ -15,6 +15,7 @@
  * Variable names are customizable — defaults A B C D (E), MSB first.
  */
 import type {
+  InputWidth,
   KMapCell,
   KMapData,
   KMapGroup,
@@ -124,11 +125,6 @@ export function coverToGroups(
   });
 
   return groups;
-}
-
-/** Validate a potential K-map group (used by import validation): power-of-two size. */
-export function isValidGroupSize(size: number): boolean {
-  return size > 0 && (size & (size - 1)) === 0;
 }
 
 /** A drawable rectangle in cell coordinates. */

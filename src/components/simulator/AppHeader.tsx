@@ -44,7 +44,6 @@ export function AppHeader({ displaySvgRef }: { displaySvgRef: React.RefObject<SV
   const engines = useEngines();
   const modified = usePresetModified();
   const applied = useAppliedTablePreset();
-  const displayModeLabel = useSimulator((s) => s.displayMode);
   const { resolvedTheme, setTheme } = useTheme();
   const [galleryOpen, setGalleryOpen] = useState(false);
 
@@ -167,7 +166,7 @@ export function AppHeader({ displaySvgRef }: { displaySvgRef: React.RefObject<SV
                   {applied.modified && (
                     <span
                       className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
-                      aria-label="table modified"
+                      aria-hidden
                     />
                   )}
                 </Button>
@@ -253,7 +252,7 @@ export function AppHeader({ displaySvgRef }: { displaySvgRef: React.RefObject<SV
               </Badge>
             )}
             <span className="hidden font-mono text-[10px] text-muted-foreground lg:block">
-              {displayModeLabel} mode · {variableNames.join(' ')}
+              {displayMode} mode · {variableNames.join(' ')}
             </span>
           </div>
         </div>

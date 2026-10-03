@@ -4,9 +4,11 @@
  *
  *  - Logic source picks minimized (Quine-McCluskey cover) or direct
  *    canonical SOP so students can compare gate counts side by side.
- *  - Live gate-count preview + per-segment breakdown recompute on every
- *    option change — the builder is fast and pure, and the downloaded file
- *    always matches the numbers on screen.
+ *  - Live gate-count preview recompute on every option change — but NOT on
+ *    every title keystroke: the stats (gate counts, depth, per-segment chips)
+ *    are title-independent, so the preview memo deliberately omits `title`
+ *    and builds with a placeholder instead. The full 50KB JSON is built
+ *    exactly once, inside the download handler, with the real title.
  *  - Education panel explains how to import and what is inside the file.
  */
 'use client';
@@ -64,6 +66,9 @@ const OPEN_STEPS = [
   'Choose File → Import and select the downloaded file — no account needed, the circuit runs immediately.',
 ];
 
+/** Placeholder title for the stats-only preview build (title never affects gate counts). */
+const PREVIEW_TITLE = 'SevenSeg Decoder';
+
 export function CircuitVerseExportDialog({ open, onOpenChange }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -80,22 +85,29 @@ export function CircuitVerseExportDialog({ open, onOpenChange }: {
   /** Title defaults to the project name (re-synced on every open). */
   const title = titleOverride ?? (projectName.trim() || 'SevenSeg Decoder');
 
-  /** Live preview + the exact bytes the download button will emit. */
-  const { result, error } = useMemo(() => {
+  /**
+   * Live gate-count preview — intentionally title-INDEPENDENT (the title only
+   * lands in the JSON metadata and the filename). Deps are the real inputs to
+   * the stats, so typing in the title field no longer rebuilds the whole .cv
+   * document; the downloadable bytes are built once in handleDownload.
+   */
+  const { stats, error } = useMemo<{ stats: ReturnType<typeof buildCircuitverseProject>['stats'] | null; error: string | null }>(() => {
     try {
       return {
-        result: buildCircuitverseProject(inputBits, engines, { title, logicSource, varNames }),
-        error: null as string | null,
+        stats: buildCircuitverseProject(inputBits, engines, {
+          title: PREVIEW_TITLE,
+          logicSource,
+          varNames: variableNames,
+        }).stats,
+        error: null,
       };
     } catch (err) {
       return {
-        result: null,
+        stats: null,
         error: err instanceof Error ? err.message : 'Unknown error while building the CircuitVerse project.',
       };
     }
-  }, [inputBits, engines, title, logicSource, variableNames]);
-
-  const stats = result?.stats ?? null;
+  }, [inputBits, engines, logicSource, variableNames]);
 
   const handleOpenChange = (o: boolean) => {
     if (!o) setTitleOverride(null); // next open re-syncs with the project name
@@ -103,11 +115,17 @@ export function CircuitVerseExportDialog({ open, onOpenChange }: {
   };
 
   const handleDownload = async () => {
-    if (!result || busy) return;
+    if (!stats || busy) return;
     setBusy(true);
     try {
+      // Single build at click time — cheap, and it picks up the CURRENT title.
+      const built = buildCircuitverseProject(inputBits, engines, {
+        title,
+        logicSource,
+        varNames: variableNames,
+      });
       downloadText(
-        result.json,
+        built.json,
         `${sanitizeFilename(title) || 'sevenseg'}-circuitverse.cv`,
         'application/json',
       );
@@ -296,7 +314,7 @@ export function CircuitVerseExportDialog({ open, onOpenChange }: {
           <DialogClose asChild>
             <Button variant="outline" className="h-11" disabled={busy}>Cancel</Button>
           </DialogClose>
-          <Button className="h-11 gap-2" onClick={handleDownload} disabled={busy || !result}>
+          <Button className="h-11 gap-2" onClick={handleDownload} disabled={busy || !stats}>
             {busy
               ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
               : <Download className="h-4 w-4" aria-hidden />}

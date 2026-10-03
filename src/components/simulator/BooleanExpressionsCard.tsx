@@ -45,11 +45,7 @@ function ExpressionRow({ terms, form }: { terms: Term[]; form: ExpressionForm })
         {terms.map((t, i) => (
           <span key={i} className="flex items-center gap-1.5">
             {i > 0 && <span className="text-muted-foreground">+</span>}
-            {t.literals.length > 1 ? (
-              <TermView literals={t.literals} op="·" />
-            ) : (
-              <TermView literals={t.literals} op="·" />
-            )}
+            <TermView literals={t.literals} op="·" />
           </span>
         ))}
       </span>

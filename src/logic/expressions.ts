@@ -11,7 +11,6 @@ import type {
   Term,
 } from '@/types/simulator';
 import { inputVarNames } from '@/utils/binary';
-import type { InputWidth } from '@/types/simulator';
 
 const COMBINING_OVERLINE = '\u0305';
 
@@ -123,24 +122,4 @@ export function termStats(terms: Term[]): ExpressionStats {
     terms: terms.length,
     literals: terms.reduce((acc, t) => acc + t.literals.length, 0),
   };
-}
-
-/** Σ-notation minterm list, e.g. "Σm(1, 3, 5)". */
-export function sigmaNotation(values: number[]): string {
-  return `Σm(${values.join(', ')})`;
-}
-
-/** Π-notation maxterm list. */
-export function piNotation(values: number[]): string {
-  return `ΠM(${values.join(', ')})`;
-}
-
-/** d-notation don't-care list. */
-export function dontCareNotation(values: number[]): string {
-  return `d(${values.join(', ')})`;
-}
-
-/** Variable names (MSB first, A = MSB) for the input width — re-exported convenience. */
-export function expressionVarNames(bits: InputWidth): string[] {
-  return inputVarNames(bits);
 }

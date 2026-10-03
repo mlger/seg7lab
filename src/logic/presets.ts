@@ -20,6 +20,7 @@ import {
   type PresetGenerator,
   type PresetKind,
   type SegmentOutput,
+  type SegmentPatternX,
   type TablePresetDef,
   type TruthTable,
   type FontPresetDef,
@@ -33,7 +34,8 @@ import {
   resizeTable,
   valueToChar,
 } from './truthTable';
-import { buildFontTable, FONT_GLYPHS, fontPattern, isSegmentName, type FontGlyph } from './font';
+import { buildFontTable, FONT_GLYPHS, type FontGlyph } from './font';
+import { isSegmentOutput, parseGlyphEntry } from './validation';
 
 export const PRESET_FILE_FORMAT = 'sevenseg-preset';
 export const PRESET_FILE_VERSION = 1;
@@ -107,8 +109,8 @@ export function grayCounterTable(bits: InputWidth): TruthTable {
 /** Boundary preset: every segment (incl. DP) ON or OFF on every code. */
 export function allSegmentsTable(bits: InputWidth, on: boolean): TruthTable {
   const n = 1 << bits;
-  const fill = () => {
-    const out = {} as Record<string, SegmentOutput>;
+  const fill = (): SegmentPatternX => {
+    const out = {} as SegmentPatternX;
     for (const s of SEGMENT_NAMES) out[s] = (on ? 1 : 0) as SegmentOutput;
     return out;
   };
@@ -335,10 +337,6 @@ export function newUserId(): string {
 const GENERATORS: readonly PresetGenerator[] = ['bcd', 'hex', 'font', 'excess3', 'gray', 'aiken', 'allon', 'alloff', 'literal'];
 const CATEGORIES: readonly PresetCategory[] = ['Digits', 'Codes', 'Letters', 'Boundary', 'User'];
 
-function isSegmentOutput(v: unknown): v is SegmentOutput {
-  return v === 0 || v === 1 || v === 'X';
-}
-
 /** Validate a literal truth table (user presets must be exact). */
 function validateLiteralTable(raw: unknown, bits: InputWidth): TruthTable | null {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
@@ -350,7 +348,7 @@ function validateLiteralTable(raw: unknown, bits: InputWidth): TruthTable | null
     if (typeof row !== 'object' || row === null) return null;
     const outputsRaw = (row as Record<string, unknown>).outputs;
     if (typeof outputsRaw !== 'object' || outputsRaw === null) return null;
-    const outputs = {} as Record<string, SegmentOutput>;
+    const outputs = {} as SegmentPatternX;
     for (const seg of SEGMENT_NAMES) {
       const v = (outputsRaw as Record<string, unknown>)[seg];
       if (!isSegmentOutput(v)) return null;
@@ -372,14 +370,10 @@ function parseGlyphs(raw: unknown, errors: string[], fatalCode: string): FontGly
   }
   const glyphs: FontGlyphData[] = [];
   raw.forEach((g, i) => {
-    if (typeof g === 'object' && g !== null) {
-      const char = (g as Record<string, unknown>).char;
-      const segs = (g as Record<string, unknown>).segments;
-      if (typeof char === 'string' && char.length > 0 && char.length <= 4
-        && typeof segs === 'string' && [...segs].every(isSegmentName)) {
-        glyphs.push({ char, segments: segs });
-        return;
-      }
+    const entry = parseGlyphEntry(g);
+    if (entry) {
+      glyphs.push(entry);
+      return;
     }
     errors.push(`E-278: Glyph ${i} invalid (needs "char": string and "segments": subset of ABCDEFGDP) — dropped.`);
   });
@@ -573,10 +567,4 @@ export function validateLibraryFontPreset(raw: unknown): FontPresetDef | null {
   const createdAt = typeof obj.createdAt === 'string' && obj.createdAt !== '' ? obj.createdAt : res.fontPreset.createdAt;
   const updatedAt = typeof obj.updatedAt === 'string' && obj.updatedAt !== '' ? obj.updatedAt : res.fontPreset.updatedAt;
   return { ...res.fontPreset, id, createdAt, updatedAt };
-}
-
-/** Convenience: pattern of a single glyph by char label (first match). */
-export function glyphPatternByChar(char: string, glyphs: FontGlyph[]): ReturnType<typeof fontPattern> | null {
-  const g = glyphs.find((x) => x.char === char);
-  return g ? fontPattern(g.segments) : null;
 }

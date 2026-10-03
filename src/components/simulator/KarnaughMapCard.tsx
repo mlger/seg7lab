@@ -17,20 +17,12 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
-import { SEGMENT_NAMES, type CoverForm, type KMapGroup } from '@/types/simulator';
+import { groupColor, hexToRgba } from '@/lib/colors';
+import { type CoverForm, type KMapGroup } from '@/types/simulator';
 import { groupCellRects } from '@/logic/kmap';
-
-const GROUP_PALETTE = [
-  '#f59e0b', '#10b981', '#f43f5e', '#a855f7',
-  '#fb923c', '#14b8a6', '#eab308', '#ec4899',
-];
+import { SegmentSelector } from './shared/SegmentSelector';
 
 const CELL = 48; // px
-
-function hexToRgba(hex: string, alpha: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
-}
 
 interface GroupRect {
   x: number;
@@ -75,9 +67,10 @@ export function KarnaughMapCard() {
   const groups = form === 'sop' ? engine.sopGroups : engine.posGroups;
   const uncovered = form === 'sop' ? engine.uncoveredSop : engine.uncoveredPos;
   const activeTerms = form === 'sop' ? engine.activeSopTerms : engine.activePosTerms;
+  // Honesty flag: false only when the minimizer's search budget was exhausted
+  // (never happens for ≤ 5 variables) and a greedy heuristic cover was returned.
+  const coverExact = (form === 'sop' ? engine.sop : engine.pos).exact;
   const [hoverGroup, setHoverGroup] = useState<string | null>(null);
-
-  const groupColor = (g: KMapGroup) => GROUP_PALETTE[g.colorIndex % GROUP_PALETTE.length];
 
   const hasOverrides = useMemo(
     () => groups.some((g) => g.included !== g.inMinimalCover),
@@ -122,25 +115,11 @@ export function KarnaughMapCard() {
       </CardHeader>
       <CardContent className="space-y-4">
         {/* segment selector */}
-        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="K-map segment selector">
-          {SEGMENT_NAMES.map((seg) => (
-            <button
-              key={seg}
-              type="button"
-              role="tab"
-              aria-selected={seg === activeSegment}
-              onClick={() => setActiveSegment(seg)}
-              className={cn(
-                'h-8 min-w-9 rounded-md border px-2 font-mono text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                seg === activeSegment
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-border bg-muted/40 text-muted-foreground hover:border-muted-foreground/40',
-              )}
-            >
-              {seg}
-            </button>
-          ))}
-        </div>
+        <SegmentSelector
+          activeSegment={activeSegment}
+          onSelect={setActiveSegment}
+          label="K-map segment selector"
+        />
 
         {/* the map(s) */}
         <div className="overflow-x-auto pb-1">
@@ -182,9 +161,9 @@ export function KarnaughMapCard() {
                         aria-label={`K-map for segment ${activeSegment}${engine.kmap.planeVar ? `, plane ${engine.kmap.planeVar}=${planeIdx}` : ''}`}
                       >
                         {/* group overlays */}
-                        <div className="pointer-events-none absolute inset-0 z-10">
+                        <div className="pointer-events-none absolute inset-0 z-10" aria-hidden>
                           {groups.filter((g) => g.included).flatMap((g) => {
-                            const color = groupColor(g);
+                            const color = groupColor(g.colorIndex);
                             const hovered = hoverGroup === g.key;
                             return groupRects(g, planeIdx).map((r, i) => (
                               <div
@@ -201,46 +180,59 @@ export function KarnaughMapCard() {
                             ));
                           })}
                         </div>
-                        {/* cells */}
-                        {plane.flatMap((rowCells, r) =>
-                          rowCells.map((cell, c) => {
-                            const isCurrent = cell.minterm === currentInput;
-                            const isUncovered = uncovered.includes(cell.minterm);
-                            return (
-                              <button
-                                key={`${r}-${c}`}
-                                type="button"
-                                className={cn(
-                                  'absolute flex flex-col items-center justify-center border border-border/60 font-mono text-base font-bold transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:z-20',
-                                  cell.value === 1
-                                    ? 'text-emerald-600 dark:text-emerald-400'
-                                    : cell.value === 'X'
-                                      ? 'text-amber-600 dark:text-amber-400'
-                                      : 'text-muted-foreground',
-                                  isCurrent && 'ring-2 ring-primary ring-offset-1 ring-offset-background z-20',
-                                  isUncovered && 'animate-pulse bg-destructive/15',
-                                )}
-                                style={{ left: c * CELL, top: r * CELL, width: CELL, height: CELL }}
-                                onClick={() => cycleCell(cell.minterm, activeSegment)}
-                                aria-label={`Cell m${cell.minterm}, value ${cell.value}, click to cycle`}
-                                title={`m${cell.minterm} = ${cell.value} — click to cycle`}
-                              >
-                                {cell.value}
-                                {kmapShowMinterms && (
-                                  <span className="absolute left-0.5 top-0.5 text-[9px] font-normal opacity-60">
-                                    {cell.minterm}
-                                  </span>
-                                )}
-                                {isUncovered && (
-                                  <AlertTriangle
-                                    className="absolute bottom-0.5 right-0.5 h-3 w-3 text-destructive"
-                                    aria-hidden
-                                  />
-                                )}
-                              </button>
-                            );
-                          }),
-                        )}
+                        {/* cells — proper grid structure: role=grid > role=row >
+                            role=gridcell wrappers around the interactive buttons */}
+                        {plane.map((rowCells, r) => (
+                          <div
+                            key={r}
+                            role="row"
+                            className="absolute left-0 flex"
+                            style={{ top: r * CELL, height: CELL }}
+                          >
+                            {rowCells.map((cell, c) => {
+                              const isCurrent = cell.minterm === currentInput;
+                              const isUncovered = uncovered.includes(cell.minterm);
+                              return (
+                                <div
+                                  key={c}
+                                  role="gridcell"
+                                  className="relative"
+                                  style={{ width: CELL, height: CELL }}
+                                >
+                                  <button
+                                    type="button"
+                                    className={cn(
+                                      'absolute inset-0 flex flex-col items-center justify-center border border-border/60 font-mono text-base font-bold transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:z-20',
+                                      cell.value === 1
+                                        ? 'text-emerald-600 dark:text-emerald-400'
+                                        : cell.value === 'X'
+                                          ? 'text-amber-600 dark:text-amber-400'
+                                          : 'text-muted-foreground',
+                                      isCurrent && 'ring-2 ring-primary ring-offset-1 ring-offset-background z-20',
+                                      isUncovered && 'animate-pulse bg-destructive/15',
+                                    )}
+                                    onClick={() => cycleCell(cell.minterm, activeSegment)}
+                                    aria-label={`Cell m${cell.minterm}, value ${cell.value}, click to cycle`}
+                                    title={`m${cell.minterm} = ${cell.value} — click to cycle`}
+                                  >
+                                    {cell.value}
+                                    {kmapShowMinterms && (
+                                      <span className="absolute left-0.5 top-0.5 text-[9px] font-normal opacity-60">
+                                        {cell.minterm}
+                                      </span>
+                                    )}
+                                    {isUncovered && (
+                                      <AlertTriangle
+                                        className="absolute bottom-0.5 right-0.5 h-3 w-3 text-destructive"
+                                        aria-hidden
+                                      />
+                                    )}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -268,10 +260,21 @@ export function KarnaughMapCard() {
 
         {/* groups legend */}
         <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Prime groups ({groups.filter((g) => g.included).length} in cover · {groups.length} primes)
-            </h4>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <h4 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                Prime groups ({groups.filter((g) => g.included).length} in cover · {groups.length} primes)
+              </h4>
+              {!coverExact && (
+                <Badge
+                  className="gap-1 border-amber-500/30 bg-amber-500/10 font-mono text-[10px] text-amber-600 dark:text-amber-400"
+                  title="The branch-and-bound search hit its node budget before proving minimality — this cover is a greedy heuristic result and may not be minimal."
+                >
+                  <AlertTriangle className="h-3 w-3" aria-hidden />
+                  heuristic cover — search budget limit
+                </Badge>
+              )}
+            </div>
             {hasOverrides && (
               <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => resetCoverOverrides(activeSegment)}>
                 Restore minimal cover
@@ -286,7 +289,7 @@ export function KarnaughMapCard() {
           )}
           <ul className="max-h-56 space-y-1 overflow-y-auto custom-scroll pr-1">
             {groups.map((g) => {
-              const color = groupColor(g);
+              const color = groupColor(g.colorIndex);
               return (
                 <li
                   key={g.key}

@@ -209,6 +209,14 @@ export interface MinimizeResult {
   cover: PrimeInfo[];
   /** Ones not covered by `cover` (empty when cover is complete). */
   uncovered: number[];
+  /**
+   * Whether `cover` is PROVEN minimal: the exact branch-and-bound search ran
+   * to completion (or no search was needed — essentials alone cover, or the
+   * function is constant 0). false = the search budget was exhausted, so a
+   * greedy heuristic cover was returned instead (possible but not guaranteed
+   * minimal). Never false for ≤ 5 variables in practice.
+   */
+  exact: boolean;
 }
 
 /** One highlighted group on the K-map. */

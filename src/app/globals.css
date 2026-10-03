@@ -156,7 +156,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .wire-active {
+  .wire-active,
+  .animate-pulse {
     animation: none;
   }
 }

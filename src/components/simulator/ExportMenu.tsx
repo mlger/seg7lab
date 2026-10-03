@@ -2,11 +2,18 @@
  * Export menu: CSV (truth table), JSON (project), SVG / PNG (7-segment
  * display), PDF (engineering report), Verilog (synthesizable module) and
  * CircuitVerse (interactive .cv gate circuit — opens a dialog).
+ *
+ * Busy UX: while an export runs the dropdown STAYS OPEN (onSelect calls
+ * preventDefault), the running item shows a spinner, every item is disabled
+ * and the trigger swaps its icon for a spinner — then the menu closes
+ * programmatically when the export finishes. Completion is announced via
+ * toast. This guarantees visible feedback and makes double-triggers
+ * impossible.
  */
 'use client';
 
 import { useState } from 'react';
-import { Download, FileJson, FileText, FileCode2, FileSpreadsheet, Image as ImageIcon, FileImage, Type, LayoutTemplate, CircuitBoard } from 'lucide-react';
+import { Download, FileJson, FileText, FileCode2, FileSpreadsheet, Image as ImageIcon, FileImage, Type, LayoutTemplate, CircuitBoard, Loader2 } from 'lucide-react';
 import { useSimulator } from '@/lib/store';
 import { useEngines } from '@/lib/useEngine';
 import { buildTablePresetFile, newUserId } from '@/logic/presets';
@@ -25,6 +32,7 @@ import { Button } from '@/components/ui/button';
 
 export function ExportMenu({ displaySvgRef }: { displaySvgRef: React.RefObject<SVGSVGElement | null> }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
   const [cvOpen, setCvOpen] = useState(false);
   const toProjectData = useSimulator((s) => s.toProjectData);
   const projectName = useSimulator((s) => s.projectName);
@@ -57,6 +65,7 @@ export function ExportMenu({ displaySvgRef }: { displaySvgRef: React.RefObject<S
   };
 
   const run = async (kind: string, fn: () => void | Promise<void>) => {
+    if (busy !== null) return;
     setBusy(kind);
     try {
       await fn();
@@ -69,63 +78,85 @@ export function ExportMenu({ displaySvgRef }: { displaySvgRef: React.RefObject<S
       });
     } finally {
       setBusy(null);
+      setOpen(false);
     }
   };
 
+  /** Item props shared by every export entry: keep the menu open while the
+   *  export runs (preventDefault on select) and disable re-entry. */
+  const exportItem = (kind: string, fn: () => void | Promise<void>) => ({
+    disabled: busy !== null,
+    onSelect: (e: Event) => {
+      e.preventDefault();
+      void run(kind, fn);
+    },
+  });
+
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm" aria-label="Export menu" disabled={busy !== null}>
-            <Download className="h-4 w-4" />
+            {busy !== null
+              ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              : <Download className="h-4 w-4" aria-hidden />}
             <span className="hidden sm:inline ml-1">Export</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-60">
           <DropdownMenuLabel>Simulator exports</DropdownMenuLabel>
-          <DropdownMenuItem onClick={() => run('JSON project', () => downloadText(buildProjectJson(toProjectData()), `${base}.json`, 'application/json'))}>
-            <FileJson className="mr-2 h-4 w-4" aria-hidden /> Project JSON {busy === 'JSON project' && '…'}
+          <DropdownMenuItem {...exportItem('JSON project', () => downloadText(buildProjectJson(toProjectData()), `${base}.json`, 'application/json'))}>
+            <FileJson className="mr-2 h-4 w-4" aria-hidden /> Project JSON
+            {busy === 'JSON project' && <Loader2 className="ml-auto h-4 w-4 animate-spin" aria-hidden />}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => run('Font JSON (table window)', () => downloadText(buildFontJson(toProjectData()), `${base}-font.json`, 'application/json'))}>
-            <Type className="mr-2 h-4 w-4" aria-hidden /> Font JSON — current table {busy === 'Font JSON (table window)' && '…'}
+          <DropdownMenuItem {...exportItem('Font JSON (table window)', () => downloadText(buildFontJson(toProjectData()), `${base}-font.json`, 'application/json'))}>
+            <Type className="mr-2 h-4 w-4" aria-hidden /> Font JSON — current table
+            {busy === 'Font JSON (table window)' && <Loader2 className="ml-auto h-4 w-4 animate-spin" aria-hidden />}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => run('Font JSON (full chart font)', () => downloadText(buildBuiltinFontJson(), 'sevenseg-reference-font.json', 'application/json'))}>
-            <Type className="mr-2 h-4 w-4" aria-hidden /> Font JSON — full chart font {busy === 'Font JSON (full chart font)' && '…'}
+          <DropdownMenuItem {...exportItem('Font JSON (full chart font)', () => downloadText(buildBuiltinFontJson(), 'sevenseg-reference-font.json', 'application/json'))}>
+            <Type className="mr-2 h-4 w-4" aria-hidden /> Font JSON — full chart font
+            {busy === 'Font JSON (full chart font)' && <Loader2 className="ml-auto h-4 w-4 animate-spin" aria-hidden />}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => run('Preset JSON', () => downloadText(buildCurrentPresetFile(), `${base}-preset.json`, 'application/json'))}>
-            <LayoutTemplate className="mr-2 h-4 w-4" aria-hidden /> Preset JSON — current table {busy === 'Preset JSON' && '…'}
+          <DropdownMenuItem {...exportItem('Preset JSON', () => downloadText(buildCurrentPresetFile(), `${base}-preset.json`, 'application/json'))}>
+            <LayoutTemplate className="mr-2 h-4 w-4" aria-hidden /> Preset JSON — current table
+            {busy === 'Preset JSON' && <Loader2 className="ml-auto h-4 w-4 animate-spin" aria-hidden />}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => run('CSV truth table', () => downloadText(buildTruthTableCsv(toProjectData()), `${base}-truth-table.csv`, 'text/csv'))}>
+          <DropdownMenuItem {...exportItem('CSV truth table', () => downloadText(buildTruthTableCsv(toProjectData()), `${base}-truth-table.csv`, 'text/csv'))}>
             <FileSpreadsheet className="mr-2 h-4 w-4" aria-hidden /> Truth table CSV
+            {busy === 'CSV truth table' && <Loader2 className="ml-auto h-4 w-4 animate-spin" aria-hidden />}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => run('Verilog module', () => downloadText(buildVerilogModule(toProjectData(), engines), `${base}.v`, 'text/x-verilog'))}>
+          <DropdownMenuItem {...exportItem('Verilog module', () => downloadText(buildVerilogModule(toProjectData(), engines), `${base}.v`, 'text/x-verilog'))}>
             <FileCode2 className="mr-2 h-4 w-4" aria-hidden /> Verilog module
+            {busy === 'Verilog module' && <Loader2 className="ml-auto h-4 w-4 animate-spin" aria-hidden />}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setCvOpen(true)}>
+          <DropdownMenuItem disabled={busy !== null} onSelect={() => setCvOpen(true)}>
             <CircuitBoard className="mr-2 h-4 w-4" aria-hidden /> CircuitVerse circuit (.cv)
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Display &amp; report</DropdownMenuLabel>
           <DropdownMenuItem
-            onClick={() => run('SVG display', () => {
+            {...exportItem('SVG display', () => {
               const svg = displaySvgRef.current;
               if (!svg) throw new Error('E-233: display not available for export');
               downloadBlob(buildSvgBlob(svg), `${base}-display.svg`);
             })}
           >
             <ImageIcon className="mr-2 h-4 w-4" aria-hidden /> Display SVG
+            {busy === 'SVG display' && <Loader2 className="ml-auto h-4 w-4 animate-spin" aria-hidden />}
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() => run('PNG display', async () => {
+            {...exportItem('PNG display', async () => {
               const svg = displaySvgRef.current;
               if (!svg) throw new Error('E-233: display not available for export');
               downloadBlob(await buildPngBlob(svg), `${base}-display.png`);
             })}
           >
             <FileImage className="mr-2 h-4 w-4" aria-hidden /> Display PNG
+            {busy === 'PNG display' && <Loader2 className="ml-auto h-4 w-4 animate-spin" aria-hidden />}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => run('PDF report', () => downloadBlob(buildPdfReport(toProjectData(), engines), `${base}-report.pdf`))}>
+          <DropdownMenuItem {...exportItem('PDF report', () => downloadBlob(buildPdfReport(toProjectData(), engines), `${base}-report.pdf`))}>
             <FileText className="mr-2 h-4 w-4" aria-hidden /> PDF report (table + K-maps + equations)
+            {busy === 'PDF report' && <Loader2 className="ml-auto h-4 w-4 animate-spin" aria-hidden />}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

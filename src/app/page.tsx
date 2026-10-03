@@ -13,10 +13,10 @@ import { useSimulator, attachPersistence } from '@/lib/store';
 import { AppHeader } from '@/components/simulator/AppHeader';
 import { DisplayCard } from '@/components/simulator/DisplayCard';
 import { InputControlsCard } from '@/components/simulator/InputControlsCard';
-import { TruthTableCard } from '@/components/simulator/TruthTableCard';
+import { TruthTableCard } from '@/components/simulator/truth-table';
 import { KarnaughMapCard } from '@/components/simulator/KarnaughMapCard';
 import { BooleanExpressionsCard } from '@/components/simulator/BooleanExpressionsCard';
-import { LogicCircuitCard } from '@/components/simulator/LogicCircuitCard';
+import { LogicCircuitCard } from '@/components/simulator/logic-circuit';
 import { CustomCharacterCard } from '@/components/simulator/CustomCharacterCard';
 import { ProjectManagerCard } from '@/components/simulator/ProjectManagerCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -73,13 +73,13 @@ export default function Home() {
             <TabsContent value="truth-table" className="mt-3">
               <TruthTableCard />
             </TabsContent>
-            <TabsContent value="kmap" className="mt-3">
+            <TabsContent value="kmap" forceMount className="mt-3 data-[state=inactive]:hidden">
               <KarnaughMapCard />
             </TabsContent>
-            <TabsContent value="expressions" className="mt-3">
+            <TabsContent value="expressions" forceMount className="mt-3 data-[state=inactive]:hidden">
               <BooleanExpressionsCard />
             </TabsContent>
-            <TabsContent value="circuit" className="mt-3">
+            <TabsContent value="circuit" forceMount className="mt-3 data-[state=inactive]:hidden">
               <LogicCircuitCard />
             </TabsContent>
             <TabsContent value="characters" className="mt-3">

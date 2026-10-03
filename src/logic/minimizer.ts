@@ -113,9 +113,9 @@ export function minimize(ones: number[], dontCares: number[], numVars: number): 
   const onesSet = new Set(ones);
   const dcSet = new Set(dontCares);
 
-  // Special case: constant 0 — no minterms to cover.
+  // Special case: constant 0 — no minterms to cover, no search needed.
   if (onesSet.size === 0) {
-    return { primes: [], cover: [], uncovered: [] };
+    return { primes: [], cover: [], uncovered: [], exact: true };
   }
 
   const rawPrimes = primeImplicants([...onesSet, ...dcSet], numVars);
@@ -168,11 +168,23 @@ export function minimize(ones: number[], dontCares: number[], numVars: number): 
   let best: PrimeInfo[] | null = null;
   let bestCost: CoverCost | null = null;
   let budget = 500_000; // safety recursion budget — far beyond 5-variable needs
+  let budgetExhausted = false; // set when the exact search was cut short
 
   const candidates = primes.filter((p) => !p.isEssential);
 
+  // Hot-loop lookup: coveredOnes as a Set per candidate (identity-keyed), so the
+  // per-node chart filtering below is O(1) per membership test instead of a
+  // linear scan of the (small) coveredOnes array. Semantically identical —
+  // coveredOnes never contains duplicates.
+  const coveredSets = new Map<PrimeInfo, Set<number>>();
+  for (const p of candidates) coveredSets.set(p, new Set(p.coveredOnes));
+  const covers = (p: PrimeInfo, m: number): boolean => coveredSets.get(p)?.has(m) === true;
+
   const search = (chosen: PrimeInfo[], remainingOnes: number[]): void => {
-    if (budget <= 0) return;
+    if (budget <= 0) {
+      budgetExhausted = true;
+      return;
+    }
     budget--;
     if (remainingOnes.length === 0) {
       const solution = [...essential, ...chosen];
@@ -189,9 +201,10 @@ export function minimize(ones: number[], dontCares: number[], numVars: number): 
     if (bestCost !== null && partialTerms >= bestCost.terms) return;
 
     // Branch on the hardest uncovered minterm (fewest covering candidates).
+    const chosenSet = new Set(chosen);
     let targetCoverers: PrimeInfo[] | null = null;
     for (const m of remainingOnes) {
-      const cs = candidates.filter((p) => p.coveredOnes.includes(m) && !chosen.includes(p));
+      const cs = candidates.filter((p) => covers(p, m) && !chosenSet.has(p));
       if (targetCoverers === null || cs.length < targetCoverers.length) {
         targetCoverers = cs;
       }
@@ -210,13 +223,17 @@ export function minimize(ones: number[], dontCares: number[], numVars: number): 
     });
 
     for (const p of ordered) {
-      const nextRemaining = remainingOnes.filter((m) => !p.coveredOnes.includes(m));
+      const nextRemaining = remainingOnes.filter((m) => !covers(p, m));
       search([...chosen, p], nextRemaining);
     }
   };
 
+  // exact: the cover is proven minimal when the search ran to completion (or
+  // no search was needed — essentials alone already cover every minterm).
+  let exact = true;
   if (remaining.length > 0) {
     search([], remaining);
+    exact = !budgetExhausted;
   } else {
     best = [...essential];
     bestCost = costOf(best);
@@ -224,6 +241,7 @@ export function minimize(ones: number[], dontCares: number[], numVars: number): 
 
   // Fallback (budget exhausted): greedy completion — should never trigger for ≤ 5 vars.
   if (best === null) {
+    exact = false;
     const greedy: PrimeInfo[] = [...essential];
     let left = [...remaining];
     while (left.length > 0) {
@@ -245,13 +263,17 @@ export function minimize(ones: number[], dontCares: number[], numVars: number): 
     bestCost = costOf(greedy);
   }
 
+  // `best` is assigned in the `search` closure, so TS cannot prove it is
+  // non-null here even though the fallback above guarantees it — read it once.
+  const finalCover: PrimeInfo[] = best ?? [];
   const finalUncovered = [...onesSet].filter(
-    (m) => !best.some((p) => p.coveredOnes.includes(m)),
+    (m) => !finalCover.some((p) => p.coveredOnes.includes(m)),
   );
 
   return {
     primes,
-    cover: best!,
+    cover: finalCover,
     uncovered: finalUncovered,
+    exact,
   };
 }

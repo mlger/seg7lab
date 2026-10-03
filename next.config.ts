@@ -4,9 +4,12 @@ const nextConfig: NextConfig = {
   output: "standalone",
   /* config options here */
   typescript: {
-    ignoreBuildErrors: true,
+    // The repo is tsc-clean (`bunx tsc --noEmit` exits 0); a type error must
+    // FAIL the build instead of being silently shipped.
+    ignoreBuildErrors: false,
   },
-  reactStrictMode: false,
+  // Double-invokes effects in dev to surface impure renders/side effects.
+  reactStrictMode: true,
 };
 
 export default nextConfig;

@@ -3,15 +3,11 @@
  * Handles common-anode / common-cathode polarity and reverse-logic configuration.
  */
 import type {
-  Bit,
   DisplaySettings,
   ProjectData,
   SegmentName,
   SegmentOutput,
-  SegmentPatternX,
-  TruthTable,
 } from '@/types/simulator';
-import { getRow } from './truthTable';
 import { presetTable } from './truthTable';
 
 export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
@@ -41,16 +37,6 @@ export function isSegmentLit(output: SegmentOutput, settings: DisplaySettings): 
 /** A don't-care segment is "undefined" — rendered specially (dashed outline). */
 export function isSegmentUndefined(output: SegmentOutput): boolean {
   return output === 'X';
-}
-
-export function decodeRow(table: TruthTable, input: number): SegmentPatternX {
-  const row = getRow(table, input);
-  if (!row) throw new Error(`No truth-table row for input ${input} (${table.inputBits}-bit table)`);
-  return row.outputs;
-}
-
-export function bitOf(value: SegmentOutput): Bit {
-  return value === 1 ? 1 : 0;
 }
 
 /** Default project: classic BCD-to-7-segment decoder, don't-cares for 10-15. */

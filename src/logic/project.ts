@@ -13,10 +13,11 @@ import {
   type ProjectData,
   type SegmentName,
   type SegmentOutput,
+  type TruthTableRow,
 } from '@/types/simulator';
 import { DEFAULT_DISPLAY_SETTINGS, buildDefaultProject } from './decoder';
 import { presetTable, resizeTable } from './truthTable';
-import { isSegmentName } from './font';
+import { isSegmentOutput, parseGlyphEntry } from './validation';
 
 export const PROJECT_VERSION = 1;
 
@@ -80,15 +81,10 @@ export function parseFontFile(raw: unknown): FontFileResult {
   }
   const glyphs: FontGlyphData[] = [];
   obj.glyphs.forEach((g, i) => {
-    if (typeof g === 'object' && g !== null) {
-      const char = (g as Record<string, unknown>).char;
-      const segs = (g as Record<string, unknown>).segments;
-      const charOk = typeof char === 'string' && char.length > 0 && char.length <= 4;
-      const segsOk = typeof segs === 'string' && [...segs].every(isSegmentName);
-      if (charOk && segsOk) {
-        glyphs.push({ char, segments: segs });
-        return;
-      }
+    const entry = parseGlyphEntry(g);
+    if (entry) {
+      glyphs.push(entry);
+      return;
     }
     errors.push(`E-265: Glyph ${i} invalid (needs "char": string and "segments": subset of ABCDEFGDP) — dropped.`);
   });
@@ -114,10 +110,6 @@ function isDisplayMode(v: unknown): v is DisplayMode {
 
 function isInvalidBehavior(v: unknown): v is InvalidBehavior {
   return v === 'blank' || v === 'dontcare' || v === 'custom';
-}
-
-function isSegmentOutput(v: unknown): v is SegmentOutput {
-  return v === 0 || v === 1 || v === 'X';
 }
 
 function isHexColor(v: unknown): v is string {
@@ -197,7 +189,7 @@ export function validateProject(raw: unknown): ValidateResult {
           }.`,
         );
       }
-      const rows = [];
+      const rows: TruthTableRow[] = [];
       for (let m = 0; m < expected; m++) {
         const row = rowList[m];
         if (typeof row === 'object' && row !== null && 'outputs' in row) {
@@ -377,13 +369,8 @@ function parseFontGlyphsField(raw: unknown): CustomFont | null {
   const name = typeof obj.name === 'string' && obj.name.trim() !== '' ? obj.name.trim().slice(0, 100) : 'Custom font';
   const glyphs: FontGlyphData[] = [];
   for (const g of obj.glyphs) {
-    if (typeof g === 'object' && g !== null) {
-      const char = (g as Record<string, unknown>).char;
-      const segs = (g as Record<string, unknown>).segments;
-      if (typeof char === 'string' && char.length > 0 && char.length <= 4 && typeof segs === 'string' && [...segs].every(isSegmentName)) {
-        glyphs.push({ char, segments: segs });
-      }
-    }
+    const entry = parseGlyphEntry(g);
+    if (entry) glyphs.push(entry);
   }
   if (glyphs.length === 0) return null;
   return { name, glyphs };

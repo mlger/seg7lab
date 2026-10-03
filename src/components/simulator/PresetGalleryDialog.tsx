@@ -29,9 +29,13 @@ import { GlyphPreview } from './SevenSegmentDisplay';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from '@/hooks/use-toast';
 import { downloadText, sanitizeFilename } from '@/utils/download';
@@ -100,6 +104,8 @@ export function PresetGalleryDialog({ open, onOpenChange }: {
   const [saveName, setSaveName] = useState('');
   const [fontName, setFontName] = useState('');
   const [renaming, setRenaming] = useState<{ kind: PresetKind; id: string; name: string } | null>(null);
+  /** User preset awaiting delete confirmation in the AlertDialog. */
+  const [deleteTarget, setDeleteTarget] = useState<{ kind: PresetKind; id: string; name: string } | null>(null);
 
   const glyphs = activeFontGlyphs(customFont, activeFontId);
   const tablePresets = useMemo(
@@ -219,10 +225,7 @@ export function PresetGalleryDialog({ open, onOpenChange }: {
             </Button>
             <Button
               variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive"
-              onClick={() => {
-                deleteUserPreset(kind, id);
-                toast({ title: 'Preset deleted', description: `"${name}" removed from the library.` });
-              }}
+              onClick={() => setDeleteTarget({ kind, id, name })}
               aria-label={`Delete ${name}`}
               title="Delete"
             >
@@ -392,6 +395,39 @@ export function PresetGalleryDialog({ open, onOpenChange }: {
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* destructive-action confirmation for user-preset deletes */}
+        <AlertDialog
+          open={deleteTarget !== null}
+          onOpenChange={(o) => {
+            if (!o) setDeleteTarget(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete preset?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This removes “{deleteTarget?.name}” from your preset library. Cancel leaves
+                everything untouched; deleting cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className={buttonVariants({ variant: 'destructive' })}
+                onClick={() => {
+                  if (deleteTarget) {
+                    deleteUserPreset(deleteTarget.kind, deleteTarget.id);
+                    toast({ title: 'Preset deleted', description: `“${deleteTarget.name}” removed from the library.` });
+                  }
+                  setDeleteTarget(null);
+                }}
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );

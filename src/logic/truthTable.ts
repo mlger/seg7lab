@@ -214,23 +214,10 @@ export function segmentSets(
   return { ones, zeros, dontCares };
 }
 
-/** Quick check: does the table still equal its preset? Used for a "modified" indicator. */
-export function matchesPreset(
-  table: TruthTable,
-  mode: DisplayMode,
-  behavior: InvalidBehavior,
-  fontOpts?: FontPresetOptions,
-): boolean {
-  const preset = presetTable(table.inputBits, mode, behavior, undefined, fontOpts);
-  if (preset.rows.length !== table.rows.length) return false;
-  return preset.rows.every((pr) => {
-    const r = getRow(table, pr.input);
-    return r !== undefined && SEGMENT_NAMES.every((s) => r.outputs[s] === pr.outputs[s]);
-  });
-}
-
-/** Convert a pattern of bits (1 = ON) into a displayable character guess, or null. */
-export function patternToChar(p: SegmentPattern): string | null {
+/** Convert a pattern of bits (1 = ON) into a displayable character guess, or null.
+ *  `X` (don't-care) segments never match a hex pattern, so rows containing
+ *  them simply yield null. */
+export function patternToChar(p: SegmentPatternX): string | null {
   const key = (c: string) => HEX_PATTERNS[c];
   for (const c of Object.keys(HEX_PATTERNS)) {
     const hp = key(c);

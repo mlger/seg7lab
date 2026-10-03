@@ -1,0 +1,726 @@
+     1→/**
+     2→ * Logic-gate circuit visualizer, generated from the minimized Boolean
+     3→ * expression of the selected segment.
+     4→ *
+     5→ * Features: live signal simulation (active paths glow), zoom (wheel/buttons),
+     6→ * pan (drag background), draggable gates, click-to-inspect gates, clickable
+     7→ * input rails that drive the whole simulator, and an interactive gate
+     8→ * reference (AND OR NOT NAND NOR XOR XNOR).
+     9→ */
+    10→'use client';
+    11→
+    12→import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+    13→import {
+    14→  CircuitBoard, ZoomIn, ZoomOut, Maximize, RotateCcw, MousePointerClick, Lightbulb,
+    15→} from 'lucide-react';
+    16→import { useSimulator } from '@/lib/store';
+    17→import { useEngines } from '@/lib/useEngine';
+    18→import { ExplainBlock, TermView } from './ExplainBlock';
+    19→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    20→import { Badge } from '@/components/ui/badge';
+    21→import { Button } from '@/components/ui/button';
+    22→import { Separator } from '@/components/ui/separator';
+    23→import { cn } from '@/lib/utils';
+    24→import { SEGMENT_NAMES, type Literal, type Term } from '@/types/simulator';
+    25→
+    26→type GateType = 'input' | 'not' | 'and' | 'or' | 'xor' | 'nand' | 'nor' | 'xnor' | 'const' | 'out';
+    27→
+    28→interface CNode {
+    29→  id: string;
+    30→  type: GateType;
+    31→  label: string;
+    32→  varName?: string;
+    33→  constValue?: 0 | 1;
+    34→  operandIds: string[];
+    35→  x: number;
+    36→  y: number;
+    37→  w: number;
+    38→  h: number;
+    39→}
+    40→
+    41→interface CWire {
+    42→  id: string;
+    43→  fromId: string;
+    44→  toId: string;
+    45→  pin: number;
+    46→}
+    47→
+    48→const GATE_INFO: Record<string, { desc: string; expr: string }> = {
+    49→  AND: { desc: 'Outputs 1 only when every input is 1.', expr: 'Y = A·B' },
+    50→  OR: { desc: 'Outputs 1 when at least one input is 1.', expr: 'Y = A + B' },
+    51→  NOT: { desc: 'Inverts its single input.', expr: "Y = A'" },
+    52→  NAND: { desc: 'AND followed by inversion — outputs 0 only when every input is 1.', expr: "Y = (A·B)'" },
+    53→  NOR: { desc: 'OR followed by inversion — outputs 1 only when every input is 0.', expr: "Y = (A+B)'" },
+    54→  XOR: { desc: 'Outputs 1 when an odd number of inputs are 1.', expr: 'Y = A ⊕ B' },
+    55→  XNOR: { desc: 'XOR followed by inversion — outputs 1 when inputs are equal.', expr: "Y = (A ⊕ B)'" },
+    56→};
+    57→
+    58→/* ------------------------------------------------------------------ */
+    59→/* Netlist construction                                                */
+    60→/* ------------------------------------------------------------------ */
+    61→
+    62→function buildCircuit(terms: Term[], form: 'sop' | 'pos', varNames: string[]) {
+    63→  const nodes: CNode[] = [];
+    64→  const byId = new Map<string, CNode>();
+    65→  const add = (n: CNode) => {
+    66→    nodes.push(n);
+    67→    byId.set(n.id, n);
+    68→    return n;
+    69→  };
+    70→
+    71→  const inputNodes = new Map<string, CNode>();
+    72→  varNames.forEach((v, i) => {
+    73→    const n = add({
+    74→      id: `in-${v}`, type: 'input', label: v, varName: v, operandIds: [],
+    75→      x: 56, y: 48 + i * 76, w: 64, h: 44,
+    76→    });
+    77→    inputNodes.set(v, n);
+    78→  });
+    79→
+    80→  const notNodes = new Map<string, CNode>();
+    81→  const literalNode = (lit: Literal): CNode => {
+    82→    const base = inputNodes.get(lit.name)!;
+    83→    if (!lit.complemented) return base;
+    84→    let not = notNodes.get(lit.name);
+    85→    if (!not) {
+    86→      not = add({
+    87→        id: `not-${lit.name}`, type: 'not', label: `NOT ${lit.name}`,
+    88→        operandIds: [base.id], x: 168, y: base.y + 4, w: 60, h: 36,
+    89→      });
+    90→      notNodes.set(lit.name, not);
+    91→    }
+    92→    return not;
+    93→  };
+    94→
+    95→  const literalNodes = terms.map((t) => t.literals.map(literalNode));
+    96→  const termGate = form === 'sop' ? 'and' : 'or';
+    97→  const rootGate = form === 'sop' ? 'or' : 'and';
+    98→
+    99→  let yCursor = 52;
+   100→  const termNodes: CNode[] = [];
+   101→  terms.forEach((t, ti) => {
+   102→    const pins = literalNodes[ti];
+   103→    if (pins.length <= 1) {
+   104→      termNodes.push(pins[0] ?? add({
+   105→        id: `const-${ti}`, type: 'const', label: '1', constValue: 1, operandIds: [],
+   106→        x: 300, y: yCursor, w: 48, h: 36,
+   107→      }));
+   108→    } else {
+   109→      const h = Math.max(48, pins.length * 26 + 18);
+   110→      termNodes.push(add({
+   111→        id: `term-${ti}`, type: termGate, label: `${termGate.toUpperCase()}`,
+   112→        operandIds: pins.map((p) => p.id), x: 316, y: yCursor, w: 76, h,
+   113→      }));
+   114→      yCursor += h + 40;
+   115→    }
+   116→  });
+   117→
+   118→  const distinct = termNodes.filter((n, i, arr) => arr.findIndex((m) => m.id === n.id) === i);
+   119→  let root: CNode;
+   120→  if (terms.length === 0) {
+   121→    root = add({
+   122→      id: 'const-root', type: 'const', label: form === 'sop' ? '0' : '1',
+   123→      constValue: form === 'sop' ? 0 : 1, operandIds: [], x: 560, y: 120, w: 48, h: 36,
+   124→    });
+   125→  } else if (distinct.length === 1) {
+   126→    root = distinct[0];
+   127→  } else {
+   128→    const h = Math.max(48, distinct.length * 26 + 18);
+   129→    const rootY = 52 + (yCursor - 92) / 2 - h / 2;
+   130→    root = add({
+   131→      id: 'root', type: rootGate, label: rootGate.toUpperCase(),
+   132→      operandIds: distinct.map((n) => n.id), x: 560, y: Math.max(40, rootY), w: 76, h,
+   133→    });
+   134→  }
+   135→
+   136→  const out = add({
+   137→    id: 'out', type: 'out', label: 'OUT', operandIds: [root.id],
+   138→    x: 730, y: root.y + root.h / 2 - 34, w: 120, h: 68,
+   139→  });
+   140→
+   141→  const wires: CWire[] = [];
+   142→  for (const n of nodes) {
+   143→    n.operandIds.forEach((fromId, pin) => {
+   144→      wires.push({ id: `${fromId}->${n.id}:${pin}`, fromId, toId: n.id, pin });
+   145→    });
+   146→  }
+   147→
+   148→  const maxX = Math.max(...nodes.map((n) => n.x + n.w)) + 40;
+   149→  const maxY = Math.max(...nodes.map((n) => n.y + n.h)) + 40;
+   150→  return { nodes, wires, byId, width: Math.max(920, maxX), height: Math.max(360, maxY) };
+   151→}
+   152→
+   153→/* ------------------------------------------------------------------ */
+   154→/* Gate symbols                                                        */
+   155→/* ------------------------------------------------------------------ */
+   156→
+   157→function gateSymbol(type: GateType, x: number, y: number, w: number, h: number, active: boolean) {
+   158→  const stroke = active ? '#10b981' : 'currentColor';
+   159→  const fill = active ? 'rgba(16,185,129,0.12)' : 'rgba(128,128,128,0.07)';
+   160→  const bubble = (bx: number) => (
+   161→    <circle cx={bx} cy={y + h / 2} r={6} fill="none" stroke={stroke} strokeWidth={2} />
+   162→  );
+   163→  switch (type) {
+   164→    case 'and':
+   165→    case 'nand': {
+   166→      const bodyW = type === 'nand' ? w - 12 : w;
+   167→      return (
+   168→        <>
+   169→          <path
+   170→            d={`M ${x},${y} L ${x + bodyW * 0.52},${y} A ${h / 2},${h / 2} 0 0 1 ${x + bodyW * 0.52},${y + h} L ${x},${y + h} Z`}
+   171→            fill={fill} stroke={stroke} strokeWidth={2}
+   172→          />
+   173→          {type === 'nand' && bubble(x + w - 6)}
+   174→        </>
+   175→      );
+   176→    }
+   177→    case 'or':
+   178→    case 'nor': {
+   179→      const bodyW = type === 'nor' ? w - 12 : w;
+   180→      const mx = x + bodyW;
+   181→      return (
+   182→        <>
+   183→          <path
+   184→            d={`M ${x},${y} Q ${x + bodyW * 0.55},${y} ${mx},${y + h / 2} Q ${x + bodyW * 0.55},${y + h} ${x},${y + h} Q ${x + bodyW * 0.34},${y + h / 2} ${x},${y} Z`}
+   185→            fill={fill} stroke={stroke} strokeWidth={2}
+   186→          />
+   187→          {type === 'nor' && bubble(x + w - 6)}
+   188→        </>
+   189→      );
+   190→    }
+   191→    case 'xor':
+   192→    case 'xnor': {
+   193→      const bodyW = type === 'xnor' ? w - 12 : w;
+   194→      const mx = x + bodyW;
+   195→      return (
+   196→        <>
+   197→          <path
+   198→            d={`M ${x + 8},${y} Q ${x + bodyW * 0.55},${y} ${mx},${y + h / 2} Q ${x + bodyW * 0.55},${y + h} ${x + 8},${y + h} Q ${x + bodyW * 0.34},${y + h / 2} ${x + 8},${y} Z`}
+   199→            fill={fill} stroke={stroke} strokeWidth={2}
+   200→          />
+   201→          <path
+   202→            d={`M ${x},${y} Q ${x + bodyW * 0.34},${y + h / 2} ${x},${y + h}`}
+   203→            fill="none" stroke={stroke} strokeWidth={2}
+   204→          />
+   205→          {type === 'xnor' && bubble(x + w - 6)}
+   206→        </>
+   207→      );
+   208→    }
+   209→    case 'not': {
+   210→      const tw = w - 16;
+   211→      return (
+   212→        <>
+   213→          <path
+   214→            d={`M ${x},${y} L ${x + tw},${y + h / 2} L ${x},${y + h} Z`}
+   215→            fill={fill} stroke={stroke} strokeWidth={2}
+   216→          />
+   217→          {bubble(x + w - 6)}
+   218→        </>
+   219→      );
+   220→    }
+   221→    default:
+   222→      return null;
+   223→  }
+   224→}
+   225→
+   226→/* ------------------------------------------------------------------ */
+   227→/* Component                                                           */
+   228→/* ------------------------------------------------------------------ */
+   229→
+   230→export function LogicCircuitCard() {
+   231→  const activeSegment = useSimulator((s) => s.activeSegment);
+   232→  const setActiveSegment = useSimulator((s) => s.setActiveSegment);
+   233→  const expressionForm = useSimulator((s) => s.expressionForm);
+   234→  const currentInput = useSimulator((s) => s.currentInput);
+   235→  const inputBits = useSimulator((s) => s.inputBits);
+   236→  const toggleBit = useSimulator((s) => s.toggleBit);
+   237→  const explain = useSimulator((s) => s.explainMode);
+   238→  const engines = useEngines();
+   239→
+   240→  const form = expressionForm === 'pos' || expressionForm === 'cpos' ? 'pos' : 'sop';
+   241→  const engine = engines[activeSegment];
+   242→  const terms = form === 'sop' ? engine.activeSopTerms : engine.activePosTerms;
+   243→  const varNames = useSimulator((s) => s.variableNames);
+   244→
+   245→  const circuit = useMemo(() => buildCircuit(terms, form, varNames), [terms, form, varNames]);
+   246→
+   247→  const [zoom, setZoom] = useState(1);
+   248→  const [pan, setPan] = useState({ x: 0, y: 0 });
+   249→  const [drag, setDrag] = useState<{
+   250→    kind: 'pan' | 'gate';
+   251→    nodeId?: string;
+   252→    startX: number;
+   253→    startY: number;
+   254→    startClientX: number;
+   255→    startClientY: number;
+   256→    origX: number;
+   257→    origY: number;
+   258→  } | null>(null);
+   259→  const [overrides, setOverrides] = useState<Record<string, { x: number; y: number }>>({});
+   260→  const [selected, setSelected] = useState<string | null>(null);
+   261→  const [moved, setMoved] = useState(false);
+   262→  const svgRef = useRef<SVGSVGElement>(null);
+   263→
+   264→  const pos = useCallback(
+   265→    (n: CNode) => overrides[n.id] ?? { x: n.x, y: n.y },
+   266→    [overrides],
+   267→  );
+   268→
+   269→  /* live evaluation */
+   270→  const values = useMemo(() => {
+   271→    const val = new Map<string, 0 | 1>();
+   272→    const bitVals = varNames.map((_, i) => ((currentInput >> (inputBits - 1 - i)) & 1) as 0 | 1);
+   273→    const evalNode = (n: CNode): 0 | 1 => {
+   274→      const cached = val.get(n.id);
+   275→      if (cached !== undefined) return cached;
+   276→      let v: 0 | 1 = 0;
+   277→      switch (n.type) {
+   278→        case 'input':
+   279→          v = bitVals[varNames.indexOf(n.varName!)] ?? 0;
+   280→          break;
+   281→        case 'const':
+   282→          v = n.constValue ?? 0;
+   283→          break;
+   284→        case 'not':
+   285→          v = evalNode(circuit.byId.get(n.operandIds[0])!) === 1 ? 0 : 1;
+   286→          break;
+   287→        case 'and':
+   288→          v = n.operandIds.every((id) => evalNode(circuit.byId.get(id)!) === 1) ? 1 : 0;
+   289→          break;
+   290→        case 'or':
+   291→          v = n.operandIds.some((id) => evalNode(circuit.byId.get(id)!) === 1) ? 1 : 0;
+   292→          break;
+   293→        case 'xor':
+   294→          v = n.operandIds.reduce<number>((acc, id) => acc ^ evalNode(circuit.byId.get(id)!), 0) as 0 | 1;
+   295→          break;
+   296→        case 'nand':
+   297→          v = n.operandIds.every((id) => evalNode(circuit.byId.get(id)!) === 1) ? 0 : 1;
+   298→          break;
+   299→        case 'nor':
+   300→          v = n.operandIds.some((id) => evalNode(circuit.byId.get(id)!) === 1) ? 0 : 1;
+   301→          break;
+   302→        case 'xnor':
+   303→          v = (n.operandIds.reduce<number>((acc, id) => acc ^ evalNode(circuit.byId.get(id)!), 0) as 0 | 1) === 1 ? 0 : 1;
+   304→          break;
+   305→        case 'out':
+   306→          v = evalNode(circuit.byId.get(n.operandIds[0])!);
+   307→          break;
+   308→      }
+   309→      val.set(n.id, v);
+   310→      return v;
+   311→    };
+   312→    for (const n of circuit.nodes) evalNode(n);
+   313→    return val;
+   314→  }, [circuit, currentInput, inputBits, varNames]);
+   315→
+   316→  /* non-passive wheel zoom */
+   317→  useEffect(() => {
+   318→    const el = svgRef.current;
+   319→    if (!el) return;
+   320→    const handler = (e: WheelEvent) => {
+   321→      e.preventDefault();
+   322→      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+   323→      setZoom((z) => Math.min(2.5, Math.max(0.35, z * factor)));
+   324→    };
+   325→    el.addEventListener('wheel', handler, { passive: false });
+   326→    return () => el.removeEventListener('wheel', handler);
+   327→  }, []);
+   328→
+   329→  /* pointer interactions */
+   330→  const toGraph = (clientX: number, clientY: number) => {
+   331→    const rect = svgRef.current?.getBoundingClientRect();
+   332→    if (!rect) return { x: 0, y: 0 };
+   333→    // uniform viewBox scale + letterbox centering (preserveAspectRatio meet)
+   334→    const scale = Math.min(circuit.width / rect.width, circuit.height / rect.height);
+   335→    const offX = (rect.width - circuit.width / scale) / 2;
+   336→    const offY = (rect.height - circuit.height / scale) / 2;
+   337→    const vx = (clientX - rect.left - offX) * scale;
+   338→    const vy = (clientY - rect.top - offY) * scale;
+   339→    return { x: (vx - pan.x) / zoom, y: (vy - pan.y) / zoom };
+   340→  };
+   341→
+   342→  const onPointerMove = (e: React.PointerEvent) => {
+   343→    if (!drag) return;
+   344→    const g = toGraph(e.clientX, e.clientY);
+   345→    if (Math.abs(g.x - drag.startX) + Math.abs(g.y - drag.startY) > 4) setMoved(true);
+   346→    if (drag.kind === 'pan') {
+   347→      setPan({ x: drag.origX + (e.clientX - drag.startClientX), y: drag.origY + (e.clientY - drag.startClientY) });
+   348→    } else if (drag.nodeId) {
+   349→      setOverrides((o) => ({
+   350→        ...o,
+   351→        [drag.nodeId!]: {
+   352→          x: Math.max(4, drag.origX + (g.x - drag.startX)),
+   353→          y: Math.max(4, drag.origY + (g.y - drag.startY)),
+   354→        },
+   355→      }));
+   356→    }
+   357→  };
+   358→
+   359→  const selectedNode = selected ? circuit.byId.get(selected) : null;
+   360→  const gateCount = circuit.nodes.filter((n) => ['and', 'or', 'not', 'xor', 'nand', 'nor', 'xnor'].includes(n.type)).length;
+   361→  const varIndex = (name: string) => varNames.indexOf(name);
+   362→
+   363→  return (
+   364→    <Card id="circuit-card">
+   365→      <CardHeader className="pb-3">
+   366→        <div className="flex flex-wrap items-center justify-between gap-2">
+   367→          <CardTitle className="flex items-center gap-2 text-sm font-semibold tracking-wide">
+   368→            <CircuitBoard className="h-4 w-4 text-muted-foreground" aria-hidden />
+   369→            LOGIC CIRCUIT
+   370→          </CardTitle>
+   371→          <div className="flex flex-wrap items-center gap-1.5">
+   372→            <Badge variant="secondary" className="font-mono text-[10px]">
+   373→              {form.toUpperCase()} · {gateCount} gates
+   374→            </Badge>
+   375→            <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => { setZoom((z) => Math.min(2.5, z * 1.2)); }} aria-label="Zoom in">
+   376→              <ZoomIn className="h-3.5 w-3.5" aria-hidden />
+   377→            </Button>
+   378→            <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => { setZoom((z) => Math.max(0.35, z / 1.2)); }} aria-label="Zoom out">
+   379→              <ZoomOut className="h-3.5 w-3.5" aria-hidden />
+   380→            </Button>
+   381→            <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} aria-label="Fit view">
+   382→              <Maximize className="h-3.5 w-3.5" aria-hidden />
+   383→            </Button>
+   384→            <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => { setOverrides({}); setPan({ x: 0, y: 0 }); setZoom(1); }} aria-label="Reset gate layout">
+   385→              <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+   386→            </Button>
+   387→          </div>
+   388→        </div>
+   389→      </CardHeader>
+   390→      <CardContent className="space-y-3">
+   391→        {/* segment selector */}
+   392→        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Circuit segment selector">
+   393→          {SEGMENT_NAMES.map((seg) => (
+   394→            <button
+   395→              key={seg}
+   396→              type="button"
+   397→              role="tab"
+   398→              aria-selected={seg === activeSegment}
+   399→              onClick={() => { setSelected(null); setActiveSegment(seg); }}
+   400→              className={cn(
+   401→                'h-8 min-w-9 rounded-md border px-2 font-mono text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+   402→                seg === activeSegment
+   403→                  ? 'border-primary bg-primary text-primary-foreground'
+   404→                  : 'border-border bg-muted/40 text-muted-foreground hover:border-muted-foreground/40',
+   405→              )}
+   406→            >
+   407→              {seg}
+   408→            </button>
+   409→          ))}
+   410→        </div>
+   411→
+   412→        {/* SVG canvas */}
+   413→        <div className="overflow-hidden rounded-lg border bg-[radial-gradient(circle,rgba(128,128,128,0.18)_1px,transparent_1px)] [background-size:22px_22px]">
+   414→          <svg
+   415→            ref={svgRef}
+   416→            viewBox={`0 0 ${circuit.width} ${circuit.height}`}
+   417→            className="block h-[400px] w-full touch-none"
+   418→            role="img"
+   419→            aria-label={`Logic circuit for segment ${activeSegment}, ${form.toUpperCase()} form`}
+   420→            onPointerDown={(e) => {
+   421→              if ((e.target as Element).tagName === 'svg' || (e.target as Element).classList.contains('circuit-bg')) {
+   422→                setDrag({ kind: 'pan', startX: e.clientX, startY: e.clientY, startClientX: e.clientX, startClientY: e.clientY, origX: pan.x, origY: pan.y });
+   423→                setMoved(false);
+   424→              }
+   425→            }}
+   426→            onPointerMove={onPointerMove}
+   427→            onPointerUp={() => {
+   428→              if (drag && !moved && drag.nodeId) {
+   429→                if (drag.nodeId.startsWith('in-')) {
+   430→                  const idx = varIndex(drag.nodeId.slice(3));
+   431→                  if (idx >= 0) toggleBit(idx);
+   432→                } else {
+   433→                  const id = drag.nodeId;
+   434→                  setSelected((s) => (s === id ? null : id));
+   435→                }
+   436→              }
+   437→              setDrag(null);
+   438→            }}
+   439→            onPointerLeave={() => setDrag(null)}
+   440→          >
+   441→            <rect className="circuit-bg" x={0} y={0} width={circuit.width} height={circuit.height} fill="transparent" />
+   442→            <g transform={`translate(${pan.x},${pan.y}) scale(${zoom})`}>
+   443→              {/* wires */}
+   444→              {circuit.wires.map((w) => {
+   445→                const from = circuit.byId.get(w.fromId)!;
+   446→                const to = circuit.byId.get(w.toId)!;
+   447→                const fp = pos(from);
+   448→                const tp = pos(to);
+   449→                const sx = fp.x + from.w;
+   450→                const sy = fp.y + from.h / 2;
+   451→                const py = tp.y + ((w.pin + 1) * to.h) / (to.operandIds.length + 1);
+   452→                const ex = tp.x;
+   453→                const ey = py;
+   454→                const mx = (sx + ex) / 2;
+   455→                const v = values.get(w.fromId) ?? 0;
+   456→                return (
+   457→                  <path
+   458→                    key={w.id}
+   459→                    d={`M ${sx},${sy} C ${mx},${sy} ${mx},${ey} ${ex},${ey}`}
+   460→                    fill="none"
+   461→                    stroke={v === 1 ? '#10b981' : 'rgba(128,128,128,0.45)'}
+   462→                    strokeWidth={v === 1 ? 2.6 : 1.6}
+   463→                    strokeDasharray={v === 1 ? '7 4' : undefined}
+   464→                    className={v === 1 ? 'wire-active' : undefined}
+   465→                    data-value={v}
+   466→                  />
+   467→                );
+   468→              })}
+   469→
+   470→              {/* nodes */}
+   471→              {circuit.nodes.map((n) => {
+   472→                const p = pos(n);
+   473→                const v = values.get(n.id) ?? 0;
+   474→                const active = v === 1;
+   475→                const isSel = selected === n.id;
+   476→                if (n.type === 'input') {
+   477→                  return (
+   478→                    <g
+   479→                      key={n.id}
+   480→                      transform={`translate(${p.x},${p.y})`}
+   481→                      className="cursor-pointer"
+   482→                      onPointerDown={(e) => {
+   483→                        e.stopPropagation();
+   484→                        const g = toGraph(e.clientX, e.clientY);
+   485→                        setDrag({ kind: 'gate', nodeId: n.id, startX: g.x, startY: g.y, startClientX: e.clientX, startClientY: e.clientY, origX: p.x, origY: p.y });
+   486→                        setMoved(false);
+   487→                      }}
+   488→                    >
+   489→                      <rect
+   490→                        width={n.w} height={n.h} rx={8}
+   491→                        fill={active ? 'rgba(16,185,129,0.15)' : 'rgba(128,128,128,0.08)'}
+   492→                        stroke={active ? '#10b981' : 'rgba(128,128,128,0.5)'}
+   493→                        strokeWidth={isSel ? 2.5 : 1.5}
+   494→                      />
+   495→                      <text x={n.w / 2} y={20} textAnchor="middle" className="fill-foreground font-mono text-[13px] font-bold">
+   496→                        {n.varName}
+   497→                      </text>
+   498→                      <text
+   499→                        x={n.w / 2} y={35} textAnchor="middle"
+   500→                        className={cn('font-mono text-[12px]', active ? 'fill-emerald-500' : 'fill-muted-foreground')}
+   501→                      >
+   502→                        {v}
+   503→                      </text>
+   504→                      <title>{`Input ${n.varName} = ${v}. Drag to move; click to toggle.`}</title>
+   505→                    </g>
+   506→                  );
+   507→                }
+   508→                if (n.type === 'out') {
+   509→                  return (
+   510→                    <g key={n.id} transform={`translate(${p.x},${p.y})`}>
+   511→                      <rect
+   512→                        width={n.w} height={n.h} rx={10}
+   513→                        fill={active ? 'rgba(16,185,129,0.12)' : 'rgba(128,128,128,0.06)'}
+   514→                        stroke={active ? '#10b981' : 'rgba(128,128,128,0.5)'}
+   515→                        strokeWidth={isSel ? 2.5 : 1.5}
+   516→                      />
+   517→                      <text x={n.w / 2} y={22} textAnchor="middle" className="fill-muted-foreground font-mono text-[9px] tracking-widest">
+   518→                        SEGMENT
+   519→                      </text>
+   520→                      <text x={n.w / 2} y={40} textAnchor="middle" className="fill-foreground font-mono text-[15px] font-bold">
+   521→                        {activeSegment}
+   522→                      </text>
+   523→                      <circle
+   524→                        cx={n.w / 2} cy={54} r={7}
+   525→                        fill={active ? '#10b981' : 'rgba(128,128,128,0.3)'}
+   526→                        stroke={active ? '#10b981' : 'rgba(128,128,128,0.5)'}
+   527→                      />
+   528→                      <text x={n.w / 2} y={57.5} textAnchor="middle" className="fill-background font-mono text-[8px] font-bold">
+   529→                        {v}
+   530→                      </text>
+   531→                      <title>{`Segment ${activeSegment} output = ${v}`}</title>
+   532→                    </g>
+   533→                  );
+   534→                }
+   535→                if (n.type === 'const') {
+   536→                  return (
+   537→                    <g key={n.id} transform={`translate(${p.x},${p.y})`}>
+   538→                      <rect width={n.w} height={n.h} rx={18} fill="rgba(128,128,128,0.08)" stroke="rgba(128,128,128,0.5)" strokeWidth={1.5} />
+   539→                      <text x={n.w / 2} y={n.h / 2 + 5} textAnchor="middle" className="fill-foreground font-mono text-[13px] font-bold">
+   540→                        {n.label}
+   541→                      </text>
+   542→                      <title>{`Constant ${n.label}`}</title>
+   543→                    </g>
+   544→                  );
+   545→                }
+   546→                // logic gates
+   547→                return (
+   548→                  <g
+   549→                    key={n.id}
+   550→                    transform={`translate(${p.x},${p.y})`}
+   551→                    className="cursor-grab active:cursor-grabbing"
+   552→                    onPointerDown={(e) => {
+   553→                      e.stopPropagation();
+   554→                      const g = toGraph(e.clientX, e.clientY);
+   555→                      setDrag({ kind: 'gate', nodeId: n.id, startX: g.x, startY: g.y, startClientX: e.clientX, startClientY: e.clientY, origX: p.x, origY: p.y });
+   556→                      setMoved(false);
+   557→                    }}
+   558→                  >
+   559→                    {gateSymbol(n.type, 0, 0, n.w, n.h, active)}
+   560→                    {n.operandIds.map((_, i) => {
+   561→                      const py = ((i + 1) * n.h) / (n.operandIds.length + 1);
+   562→                      return <circle key={i} cx={0} cy={py} r={2.5} fill={active ? '#10b981' : 'rgba(128,128,128,0.7)'} />;
+   563→                    })}
+   564→                    <circle
+   565→                      cx={n.w + (['nand', 'nor', 'xnor', 'not'].includes(n.type) ? 12 : 2)}
+   566→                      cy={n.h / 2} r={5}
+   567→                      fill={active ? '#10b981' : 'rgba(128,128,128,0.25)'}
+   568→                      stroke={active ? '#10b981' : 'rgba(128,128,128,0.5)'}
+   569→                    />
+   570→                    <text
+   571→                      x={n.w / 2 - 4} y={n.h / 2 + 4} textAnchor="middle"
+   572→                      className={cn('font-mono text-[10px] font-bold pointer-events-none', active ? 'fill-emerald-500' : 'fill-muted-foreground')}
+   573→                    >
+   574→                      {n.type.toUpperCase()}
+   575→                    </text>
+   576→                    {isSel && (
+   577→                      <rect x={-6} y={-6} width={n.w + 18} height={n.h + 12} rx={8} fill="none" stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 3" />
+   578→                    )}
+   579→                    <title>{`${n.type.toUpperCase()} gate — click to inspect, drag to move`}</title>
+   580→                  </g>
+   581→                );
+   582→              })}
+   583→            </g>
+   584→          </svg>
+   585→        </div>
+   586→
+   587→        {/* legend + hint */}
+   588→        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+   589→          <span className="flex items-center gap-1.5">
+   590→            <span className="h-0.5 w-6 rounded bg-emerald-500" aria-hidden />
+   591→            logic&nbsp;1 (active path)
+   592→          </span>
+   593→          <span className="flex items-center gap-1.5">
+   594→            <span className="h-0.5 w-6 rounded bg-muted-foreground/40" aria-hidden />
+   595→            logic&nbsp;0
+   596→          </span>
+   597→          <span className="flex items-center gap-1.5">
+   598→            <MousePointerClick className="h-3.5 w-3.5" aria-hidden />
+   599→            click inputs to toggle · click gates to inspect · drag to rearrange · wheel to zoom
+   600→          </span>
+   601→        </div>
+   602→
+   603→        {/* inspect panel */}
+   604→        {selectedNode && (
+   605→          <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
+   606→            <div className="flex flex-wrap items-center gap-2 text-sm">
+   607→              <Lightbulb className="h-4 w-4 text-amber-500" aria-hidden />
+   608→              <span className="font-mono font-semibold">{selectedNode.type.toUpperCase()}</span>
+   609→              <span className="text-muted-foreground">
+   610→                {selectedNode.type === 'input'
+   611→                  ? `input variable ${selectedNode.varName}`
+   612→                  : selectedNode.type === 'out'
+   613→                    ? `segment output driver`
+   614→                    : `${selectedNode.operandIds.length}-input gate`}
+   615→              </span>
+   616→              <Badge className={cn(
+   617→                'font-mono',
+   618→                (values.get(selectedNode.id) ?? 0) === 1
+   619→                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+   620→                  : 'bg-muted text-muted-foreground',
+   621→              )}>
+   622→                out = {values.get(selectedNode.id) ?? 0}
+   623→              </Badge>
+   624→            </div>
+   625→            <p className="mt-1 text-xs text-muted-foreground">
+   626→              {GATE_INFO[selectedNode.type.toUpperCase()]?.desc ??
+   627→                (selectedNode.type === 'out'
+   628→                  ? `Drives segment ${activeSegment} for every input combination.`
+   629→                  : `Current value with input m${currentInput}.`)}
+   630→              {GATE_INFO[selectedNode.type.toUpperCase()] && (
+   631→                <span className="ml-1 font-mono">{GATE_INFO[selectedNode.type.toUpperCase()].expr}</span>
+   632→              )}
+   633→            </p>
+   634→            {selectedNode.operandIds.length > 0 && (
+   635→              <div className="mt-2 flex flex-wrap gap-1.5">
+   636→                {selectedNode.operandIds.map((id, i) => {
+   637→                  const src = circuit.byId.get(id)!;
+   638→                  const sv = values.get(id) ?? 0;
+   639→                  return (
+   640→                    <span
+   641→                      key={id}
+   642→                      className={cn(
+   643→                        'rounded border px-1.5 py-0.5 font-mono text-[10px]',
+   644→                        sv === 1
+   645→                          ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+   646→                          : 'border-border bg-muted/40 text-muted-foreground',
+   647→                      )}
+   648→                    >
+   649→                      in{i + 1}: {src.varName ?? src.type} = {sv}
+   650→                    </span>
+   651→                  );
+   652→                })}
+   653→              </div>
+   654→            )}
+   655→            <p className="mt-2 text-[11px] text-muted-foreground">
+   656→              Implemented from the simplified {form.toUpperCase()} expression:{' '}
+   657→              {terms.length === 0
+   658→                ? form === 'sop' ? 'constant 0' : 'constant 1'
+   659→                : terms.map((t, i) => (
+   660→                    <span key={i} className="mr-1 inline-flex items-center">
+   661→                      {i > 0 && <span className="mr-1 text-muted-foreground">{form === 'sop' ? '+' : '·'}</span>}
+   662→                      <TermView literals={t.literals} op={form === 'sop' ? '·' : '+'} />
+   663→                    </span>
+   664→                  ))}
+   665→            </p>
+   666→          </div>
+   667→        )}
+   668→
+   669→        {/* gate reference */}
+   670→        <details className="rounded-lg border bg-muted/20 p-3">
+   671→          <summary className="cursor-pointer text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+   672→            Gate reference (AND · OR · NOT · NAND · NOR · XOR · XNOR)
+   673→          </summary>
+   674→          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+   675→            {(['and', 'or', 'not', 'nand', 'nor', 'xor', 'xnor'] as GateType[]).map((t) => (
+   676→              <div key={t} className="flex flex-col items-center gap-1.5 rounded-md border bg-background/60 p-2">
+   677→                <svg viewBox="0 0 80 44" className="h-10 w-full text-foreground" role="img" aria-label={`${t.toUpperCase()} gate symbol`}>
+   678→                  {gateSymbol(t, 6, 4, 62, 36, false)}
+   679→                </svg>
+   680→                <span className="font-mono text-[10px] font-semibold">{t.toUpperCase()}</span>
+   681→                <span className="text-center font-mono text-[9px] leading-tight text-muted-foreground">
+   682→                  {GATE_INFO[t.toUpperCase()].expr}
+   683→                </span>
+   684→              </div>
+   685→            ))}
+   686→          </div>
+   687→          <Separator className="my-3" />
+   688→          <div className="grid gap-2 text-[11px] text-muted-foreground sm:grid-cols-2">
+   689→            {(['and', 'or', 'not', 'xor'] as GateType[]).map((t) => (
+   690→              <div key={t} className="flex items-center gap-2">
+   691→                <span className="w-10 font-mono font-semibold text-foreground/80">{t.toUpperCase()}</span>
+   692→                <span>{GATE_INFO[t.toUpperCase()].desc}</span>
+   693→              </div>
+   694→            ))}
+   695→          </div>
+   696→        </details>
+   697→
+   698→        {explain && (
+   699→          <ExplainBlock title={`How the circuit implements segment ${activeSegment}`}>
+   700→            <p>
+   701→              The circuit is drawn directly from the minimized {form.toUpperCase()} expression with{' '}
+   702→              {terms.length} term{terms.length === 1 ? '' : 's'}: each{' '}
+   703→              {form === 'sop' ? 'product term becomes an AND gate' : 'sum term becomes an OR gate'}, and
+   704→              the {form === 'sop' ? 'OR' : 'AND'} gate combines them
+   705→              {engine.dontCares.length > 0 && " (don't-cares let the minimizer share gates between terms)"}. NOT
+   706→              gates generate the complemented rails.
+   707→            </p>
+   708→            <p>
+   709→              With the current input <span className="font-mono">m{currentInput}</span>, the highlighted
+   710→              green paths carry logic 1. The output driver currently reads{' '}
+   711→              <span className="font-mono">{values.get('out') ?? 0}</span> — segment {activeSegment} is{' '}
+   712→              <span className="font-mono">{values.get('out') ?? 0}</span> for this input, matching the
+   713→              truth table.
+   714→            </p>
+   715→            <p>
+   716→              Input rails are clickable (they toggle the simulator input), gates are draggable, and
+   717→              clicking a gate shows its live inputs and output. The number of levels equals the gate
+   718→              depth: rails → NOT → {form === 'sop' ? 'AND' : 'OR'} → {form === 'sop' ? 'OR' : 'AND'} → segment.
+   719→            </p>
+   720→          </ExplainBlock>
+   721→        )}
+   722→      </CardContent>
+   723→    </Card>
+   724→  );
+   725→}
+   726→

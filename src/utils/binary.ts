@@ -12,11 +12,6 @@ export function inputVarNames(bits: InputWidth): string[] {
   return bits === 5 ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
 }
 
-/** Weight (2^k) of the variable at `varIndex` (0 = MSB). */
-export function varWeight(numVars: number, varIndex: number): number {
-  return 1 << (numVars - 1 - varIndex);
-}
-
 /** Split a value into bits, MSB first. */
 export function toBits(value: number, bits: number): Bit[] {
   const out: Bit[] = [];
@@ -26,7 +21,7 @@ export function toBits(value: number, bits: number): Bit[] {
 
 /** Join MSB-first bits into a number. */
 export function bitsToNumber(bits: Bit[]): number {
-  return bits.reduce((acc, b) => (acc << 1) | b, 0);
+  return bits.reduce<number>((acc, b) => (acc << 1) | b, 0);
 }
 
 export function maxvalue(bits: number): number {

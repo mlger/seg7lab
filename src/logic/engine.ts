@@ -7,6 +7,8 @@ import {
   SEGMENT_NAMES,
   type CoverForm,
   type InputWidth,
+  type MinimizeResult,
+  type PrimeInfo,
   type ProjectData,
   type SegmentEngine,
   type SegmentName,

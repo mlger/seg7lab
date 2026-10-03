@@ -13,8 +13,8 @@ export interface ProjectSummary {
   inputBits: number;
   createdAt: string;
   updatedAt: string;
-  /** Owning browser token (null = shared/legacy row created before ownership). */
-  ownerId: string | null;
+  /** Owning browser token (null/absent = shared/legacy row created before ownership). */
+  ownerId?: string | null;
 }
 
 /** Full project row (GET ?full=1, GET /api/projects/:id, POST/PUT responses). */

@@ -1,0 +1,708 @@
+     1→/**
+     2→ * Verification suite for the CircuitVerse export engine
+     3→ * (src/logic/circuitverse.ts). Run from the project root:
+     4→ *
+     5→ *     bun scripts/verify-circuitverse.ts
+     6→ *
+     7→ * Layers, applied to every generated file:
+     8→ *  1. Importer-replica validation — a verbatim mirror of circuitverse.org's
+     9→ *     ValidateData (file/Open.js): exact ordered top-level key set, required
+    10→ *     scope keys, orderedTabs/focussedCircuit consistency.
+    11→ *  2. Structural checks — node indices in range, mutual connections, every
+    12→ *     pin claimed exactly once, constructor-exact pin offsets, string
+    13→ *     ConstantVal states, coordinate grid, scope.nodes vs type-2 nodes, etc.
+    14→ *  3. A mini CircuitVerse interpreter: union-find nets over allNodes, gate
+    15→ *     propagation to fixpoint, SevenSegDisplay pin readout — simulated for
+    16→ *     EVERY input code and compared against a directly-evaluated SOP
+    17→ *     reference and against the truth table (non-'X' cells).
+    18→ *  4. Seven end-to-end cases over preset/hand-built tables.
+    19→ */
+    20→import { buildCircuitverseProject } from '@/logic/circuitverse';
+    21→import type { CircuitverseBuildResult, CircuitverseStats } from '@/logic/circuitverse';
+    22→import { computeEngines } from '@/logic/engine';
+    23→import type { SegmentEngineMap } from '@/logic/engine';
+    24→import { presetTable } from '@/logic/truthTable';
+    25→import { allSegmentsTable } from '@/logic/presets';
+    26→import { FONT_GLYPHS } from '@/logic/font';
+    27→import { implicantToSopTerm } from '@/logic/expressions';
+    28→import { inputVarNames } from '@/utils/binary';
+    29→import {
+    30→  SEGMENT_NAMES,
+    31→  type InputWidth,
+    32→  type SegmentName,
+    33→  type Term,
+    34→  type TruthTable,
+    35→} from '@/types/simulator';
+    36→
+    37→/* ------------------------------------------------------------------ */
+    38→/* Check harness                                                       */
+    39→/* ------------------------------------------------------------------ */
+    40→
+    41→class CaseChecker {
+    42→  count = 0;
+    43→
+    44→  check(cond: boolean, msg: string): void {
+    45→    this.count++;
+    46→    if (!cond) throw new Error(`check failed: ${msg}`);
+    47→  }
+    48→
+    49→  equal<T>(actual: T, expected: T, msg: string): void {
+    50→    this.count++;
+    51→    if (actual !== expected) {
+    52→      throw new Error(`${msg}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+    53→    }
+    54→  }
+    55→}
+    56→
+    57→/* ------------------------------------------------------------------ */
+    58→/* Importer replica (verbatim algorithm from CircuitVerse file/Open.js) */
+    59→/* ------------------------------------------------------------------ */
+    60→
+    61→const SCOPE_SCHEMA = ['layout', 'verilogMetadata', 'allNodes', 'id', 'name', 'restrictedCircuitElementsUsed', 'nodes'];
+    62→const JSON_SCHEMA = ['name', 'timePeriod', 'clockEnabled', 'projectId', 'focussedCircuit', 'orderedTabs', 'scopes'];
+    63→const NON_MODULE_KEYS = new Set(SCOPE_SCHEMA);
+    64→const KNOWN_MODULES = new Set(['Input', 'AndGate', 'OrGate', 'NotGate', 'ConstantVal', 'SevenSegDisplay']);
+    65→
+    66→/** Loose shapes of the parsed .cv JSON. */
+    67→interface CvNodeJson { x: number; y: number; type: number; bitWidth: number; label: string; connections: number[]; }
+    68→interface CvComponentJson {
+    69→  x: number; y: number; objectType: string; label: unknown; direction: unknown;
+    70→  labelDirection: unknown; propagationDelay: unknown;
+    71→  customData: {
+    72→    nodes: Record<string, unknown>;
+    73→    values?: { state: number };
+    74→    constructorParamaters: unknown[];
+    75→  };
+    76→  subcircuitMetadata?: unknown;
+    77→}
+    78→interface CvScopeJson extends Record<string, unknown> {
+    79→  layout: Record<string, unknown>;
+    80→  verilogMetadata: Record<string, unknown>;
+    81→  allNodes: CvNodeJson[];
+    82→  id: number;
+    83→  name: string;
+    84→  restrictedCircuitElementsUsed: unknown[];
+    85→  nodes: number[];
+    86→}
+    87→interface CvProjectJson extends Record<string, unknown> {
+    88→  name: string;
+    89→  timePeriod: number;
+    90→  clockEnabled: boolean;
+    91→  projectId: string;
+    92→  focussedCircuit: number;
+    93→  orderedTabs: string[];
+    94→  scopes: CvScopeJson[];
+    95→}
+    96→
+    97→function validateDataReplica(fileData: string, title: string, c: CaseChecker): CvProjectJson {
+    98→  const parsed = JSON.parse(fileData) as CvProjectJson;
+    99→  c.check(
+   100→    JSON.stringify(Object.keys(parsed)) === JSON.stringify(JSON_SCHEMA),
+   101→    'top-level key set/order must exactly match the importer schema',
+   102→  );
+   103→  for (const scope of parsed.scopes) {
+   104→    const keys = Object.keys(scope);
+   105→    for (const key of SCOPE_SCHEMA) {
+   106→      c.check(keys.includes(key), `scope must contain '${key}'`);
+   107→    }
+   108→  }
+   109→  c.equal(parsed.name, title, 'project name must equal the requested title');
+   110→  c.equal(parsed.timePeriod, 500, 'timePeriod');
+   111→  c.equal(parsed.clockEnabled, true, 'clockEnabled');
+   112→  c.check(/^[A-Za-z0-9]{20}$/.test(parsed.projectId), 'projectId must be 20-char alphanumeric');
+   113→  const scope = parsed.scopes[0];
+   114→  c.equal(parsed.scopes.length, 1, 'exactly one circuit');
+   115→  c.check(typeof scope.id === 'number' && scope.id > 0, 'scope id must be a truthy number');
+   116→  c.equal(parsed.focussedCircuit, scope.id, 'focussedCircuit === scope id');
+   117→  c.equal(JSON.stringify(parsed.orderedTabs), JSON.stringify([String(scope.id)]), 'orderedTabs === [String(scope id)]');
+   118→  c.equal(
+   119→    JSON.stringify(scope.layout),
+   120→    JSON.stringify({ width: 100, height: 100, title_x: 50, title_y: 13, titleEnabled: true }),
+   121→    'scope layout',
+   122→  );
+   123→  c.equal(
+   124→    JSON.stringify(scope.verilogMetadata),
+   125→    JSON.stringify({ isVerilogCircuit: false, isMainCircuit: false, code: '// Write Some Verilog Code Here!', subCircuitScopeIds: [] }),
+   126→    'scope verilogMetadata',
+   127→  );
+   128→  c.equal(JSON.stringify(scope.restrictedCircuitElementsUsed), '[]', 'restrictedCircuitElementsUsed empty');
+   129→  c.equal(scope.name, 'Main', 'scope name');
+   130→  c.check(
+   131→    fileData === JSON.stringify(JSON.parse(fileData), null, 2),
+   132→    'json must be pretty-printed with 2-space indent',
+   133→  );
+   134→  return parsed;
+   135→}
+   136→
+   137→/* ------------------------------------------------------------------ */
+   138→/* Constructor-exact pin offsets (literal transcriptions of the        */
+   139→/* CircuitVerse constructor loops — independent of the builder)        */
+   140→/* ------------------------------------------------------------------ */
+   141→
+   142→/** modules/AndGate.js input-pin creation loop, verbatim semantics. */
+   143→function cvAndInputYs(n: number): number[] {
+   144→  const ys: number[] = [];
+   145→  if (n % 2 === 1) {
+   146→    for (let i = 0; i < n / 2 - 1; i++) ys.push(-10 * (i + 1));
+   147→    ys.push(0);
+   148→    for (let i = n / 2 + 1; i < n; i++) ys.push(10 * (i + 1 - n / 2 - 1));
+   149→  } else {
+   150→    for (let i = 0; i < n / 2; i++) ys.push(-10 * (i + 1));
+   151→    for (let i = n / 2; i < n; i++) ys.push(10 * (i + 1 - n / 2));
+   152→  }
+   153→  return ys;
+   154→}
+   155→
+   156→/** modules/OrGate.js input-pin creation loop, verbatim semantics. */
+   157→function cvOrInputYs(n: number): number[] {
+   158→  const ys: number[] = [];
+   159→  if (n % 2 === 1) {
+   160→    for (let i = Math.floor(n / 2) - 1; i >= 0; i--) ys.push(-10 * (i + 1));
+   161→    ys.push(0);
+   162→    for (let i = 0; i < Math.floor(n / 2); i++) ys.push(10 * (i + 1));
+   163→  } else {
+   164→    for (let i = n / 2 - 1; i >= 0; i--) ys.push(-10 * (i + 1));
+   165→    for (let i = 0; i < n / 2; i++) ys.push(10 * (i + 1));
+   166→  }
+   167→  return ys;
+   168→}
+   169→
+   170→/** modules/SevenSegDisplay.js pin offsets by key. */
+   171→const CV_SEVENSEG_OFFSETS: Record<string, [number, number]> = {
+   172→  g: [-20, -50], f: [-10, -50], a: [10, -50], b: [20, -50],
+   173→  e: [-20, 50], d: [-10, 50], c: [10, 50], dot: [20, 50],
+   174→};
+   175→
+   176→/* ------------------------------------------------------------------ */
+   177→/* Structural checks                                                   */
+   178→/* ------------------------------------------------------------------ */
+   179→
+   180→function componentsOf(scope: CvScopeJson): { type: string; comp: CvComponentJson }[] {
+   181→  const out: { type: string; comp: CvComponentJson }[] = [];
+   182→  for (const [key, value] of Object.entries(scope)) {
+   183→    if (NON_MODULE_KEYS.has(key)) continue;
+   184→    if (Array.isArray(value)) {
+   185→      for (const comp of value as CvComponentJson[]) out.push({ type: key, comp });
+   186→    }
+   187→  }
+   188→  return out;
+   189→}
+   190→
+   191→function structuralChecks(project: CvProjectJson, inputBits: number, c: CaseChecker): CvScopeJson {
+   192→  const scope = project.scopes[0];
+   193→  const nodes = scope.allNodes;
+   194→  const comps = componentsOf(scope);
+   195→
+   196→  // Module keys are all known types.
+   197→  for (const key of Object.keys(scope)) {
+   198→    if (!NON_MODULE_KEYS.has(key)) c.check(KNOWN_MODULES.has(key), `unknown module array '${key}'`);
+   199→  }
+   200→
+   201→  // Connections: in range, mutual, and every type-2 node has exactly 2.
+   202→  for (let i = 0; i < nodes.length; i++) {
+   203→    const nd = nodes[i];
+   204→    c.equal(nd.bitWidth, 1, `node ${i} bitWidth`);
+   205→    c.check(Number.isInteger(nd.x) && nd.x % 10 === 0, `node ${i} x must be a multiple of 10`);
+   206→    c.check(Number.isInteger(nd.y) && nd.y % 10 === 0, `node ${i} y must be a multiple of 10`);
+   207→    c.check([0, 1, 2].includes(nd.type), `node ${i} type`);
+   208→    for (const j of nd.connections) {
+   209→      c.check(Number.isInteger(j) && j >= 0 && j < nodes.length, `node ${i} connection ${j} in range`);
+   210→      c.check(nodes[j].connections.includes(i), `connection ${i}->${j} must be mutual`);
+   211→    }
+   212→    if (nd.type === 2) c.equal(nd.connections.length, 2, `type-2 node ${i} must have exactly 2 connections`);
+   213→  }
+   214→
+   215→  // scope.nodes === sorted indices of all type-2 nodes.
+   216→  const type2 = nodes.map((nd, i) => (nd.type === 2 ? i : -1)).filter((i) => i >= 0);
+   217→  c.equal(JSON.stringify(scope.nodes), JSON.stringify(type2), 'scope.nodes lists exactly the type-2 indices (sorted)');
+   218→
+   219→  // Every type-0/1 node claimed by exactly one component pin slot.
+   220→  const claimed = new Array<number>(nodes.length).fill(0);
+   221→  const claim = (idx: unknown, where: string): void => {
+   222→    c.check(typeof idx === 'number' && Number.isInteger(idx) && idx >= 0 && idx < nodes.length, `${where} references a valid node index`);
+   223→    if (typeof idx === 'number') claimed[idx]++;
+   224→  };
+   225→
+   226→  const inputLabels: string[] = [];
+   227→  const inputIds: string[] = [];
+   228→  let sevenSegCount = 0;
+   229→
+   230→  for (const { type, comp } of comps) {
+   231→    c.check(comp.objectType === type, `component objectType '${comp.objectType}' matches its array '${type}'`);
+   232→    c.equal(typeof comp.label, 'string', `${type} label is a string`);
+   233→    c.equal(comp.direction, 'RIGHT', `${type} direction`);
+   234→    c.equal(comp.labelDirection, 'LEFT', `${type} labelDirection`);
+   235→    c.check(typeof comp.propagationDelay === 'number', `${type} propagationDelay is a number`);
+   236→    c.check(comp.x % 10 === 0 && comp.y % 10 === 0, `${type} at (${comp.x},${comp.y}) on the 10-grid`);
+   237→    c.check(Array.isArray(comp.customData.constructorParamaters), `${type} constructorParamaters array`);
+   238→    const cp = comp.customData.constructorParamaters;
+   239→    const nodeKeys = Object.keys(comp.customData.nodes).sort();
+   240→
+   241→    if (type === 'Input') {
+   242→      c.equal(JSON.stringify(nodeKeys), JSON.stringify(['output1']), 'Input node keys');
+   243→      c.equal(cp[0], 'RIGHT', 'Input direction param');
+   244→      c.equal(cp[1], 1, 'Input bitWidth param');
+   245→      const layout = cp[2] as { x: number; y: number; id: string };
+   246→      c.check(!!layout && typeof layout.id === 'string' && /^[A-Za-z0-9]{20}$/.test(layout.id), 'Input layoutProperties id 20-char alnum');
+   247→      inputIds.push(layout.id);
+   248→      c.equal(layout.x, 0, 'Input layoutProperties x');
+   249→      const out = comp.customData.nodes.output1 as number;
+   250→      claim(out, 'Input output1');
+   251→      c.equal(nodes[out].x, 10, 'Input output1 pin offset x (bitWidth*10)');
+   252→      c.equal(nodes[out].y, 0, 'Input output1 pin offset y');
+   253→      c.equal(nodes[out].type, 1, 'Input output1 node type');
+   254→      c.equal(comp.propagationDelay, 0, 'Input propagationDelay 0');
+   255→      c.equal(comp.customData.values?.state, 0, 'Input values.state');
+   256→      inputLabels.push(comp.label as string);
+   257→    } else if (type === 'ConstantVal') {
+   258→      c.equal(JSON.stringify(nodeKeys), JSON.stringify(['output1']), 'ConstantVal node keys');
+   259→      c.equal(cp[0], 'RIGHT', 'ConstantVal direction param');
+   260→      c.equal(cp[1], 1, 'ConstantVal bitWidth param');
+   261→      c.check(cp[2] === '0' || cp[2] === '1', 'ConstantVal state must be the STRING "0" or "1"');
+   262→      const out = comp.customData.nodes.output1 as number;
+   263→      claim(out, 'ConstantVal output1');
+   264→      c.equal(nodes[out].x, 10, 'ConstantVal output1 pin offset x');
+   265→      c.equal(nodes[out].y, 0, 'ConstantVal output1 pin offset y');
+   266→      c.equal(nodes[out].type, 1, 'ConstantVal output1 node type');
+   267→      c.equal(comp.propagationDelay, 0, 'ConstantVal propagationDelay 0');
+   268→    } else if (type === 'NotGate') {
+   269→      c.equal(JSON.stringify(nodeKeys), JSON.stringify(['inp1', 'output1']), 'NotGate node keys');
+   270→      c.equal(JSON.stringify(cp), JSON.stringify(['RIGHT', 1]), 'NotGate constructorParamaters');
+   271→      const inp = comp.customData.nodes.inp1 as number;
+   272→      const out = comp.customData.nodes.output1 as number;
+   273→      claim(inp, 'NotGate inp1');
+   274→      claim(out, 'NotGate output1');
+   275→      c.equal(nodes[inp].x, -10, 'NotGate inp1 offset x');
+   276→      c.equal(nodes[inp].y, 0, 'NotGate inp1 offset y');
+   277→      c.equal(nodes[inp].type, 0, 'NotGate inp1 node type');
+   278→      c.equal(nodes[out].x, 20, 'NotGate output1 offset x');
+   279→      c.equal(nodes[out].y, 0, 'NotGate output1 offset y');
+   280→      c.equal(nodes[out].type, 1, 'NotGate output1 node type');
+   281→      c.equal(comp.propagationDelay, 10, 'NotGate propagationDelay 10');
+   282→    } else if (type === 'AndGate' || type === 'OrGate') {
+   283→      c.equal(JSON.stringify(nodeKeys), JSON.stringify(['inp', 'output1']), `${type} node keys`);
+   284→      const inputSize = cp[1] as number;
+   285→      c.equal(cp[0], 'RIGHT', `${type} direction param`);
+   286→      c.equal(cp[2], 1, `${type} bitWidth param`);
+   287→      const inp = comp.customData.nodes.inp as number[];
+   288→      c.check(Array.isArray(inp), `${type} inp is an array`);
+   289→      c.equal(inp.length, inputSize, `${type} inp length matches inputSize`);
+   290→      const ys = type === 'AndGate' ? cvAndInputYs(inputSize) : cvOrInputYs(inputSize);
+   291→      inp.forEach((idx, k) => {
+   292→        claim(idx, `${type} inp[${k}]`);
+   293→        c.equal(nodes[idx].x, -10, `${type} inp[${k}] offset x`);
+   294→        c.equal(nodes[idx].y, ys[k], `${type} inp[${k}] offset y (constructor order)`);
+   295→        c.equal(nodes[idx].type, 0, `${type} inp[${k}] node type`);
+   296→      });
+   297→      const out = comp.customData.nodes.output1 as number;
+   298→      claim(out, `${type} output1`);
+   299→      c.equal(nodes[out].x, 20, `${type} output1 offset x`);
+   300→      c.equal(nodes[out].y, 0, `${type} output1 offset y`);
+   301→      c.equal(nodes[out].type, 1, `${type} output1 node type`);
+   302→      c.equal(comp.propagationDelay, 10, `${type} propagationDelay 10`);
+   303→      if (type === 'AndGate') c.check(inputSize >= 2 && inputSize <= 5, `AndGate inputSize ${inputSize} within 2..5`);
+   304→      else c.check(inputSize >= 2 && inputSize <= 8, `OrGate inputSize ${inputSize} within 2..8`);
+   305→    } else if (type === 'SevenSegDisplay') {
+   306→      sevenSegCount++;
+   307→      c.equal(JSON.stringify(nodeKeys), JSON.stringify(['a', 'b', 'c', 'd', 'dot', 'e', 'f', 'g']), 'SevenSegDisplay node keys (all 8 pins)');
+   308→      c.equal(JSON.stringify(cp), JSON.stringify(['Red']), 'SevenSegDisplay constructorParamaters');
+   309→      c.equal(comp.propagationDelay, 10, 'SevenSegDisplay propagationDelay 10');
+   310→      c.check(!!comp.subcircuitMetadata, 'SevenSegDisplay has subcircuitMetadata');
+   311→      for (const [key, [ex, ey]] of Object.entries(CV_SEVENSEG_OFFSETS)) {
+   312→        const idx = comp.customData.nodes[key] as number;
+   313→        claim(idx, `SevenSegDisplay ${key}`);
+   314→        c.equal(nodes[idx].x, ex, `SevenSegDisplay ${key} offset x`);
+   315→        c.equal(nodes[idx].y, ey, `SevenSegDisplay ${key} offset y`);
+   316→        c.equal(nodes[idx].type, 0, `SevenSegDisplay ${key} node type`);
+   317→      }
+   318→    }
+   319→  }
+   320→
+   321→  for (let i = 0; i < nodes.length; i++) {
+   322→    if (nodes[i].type === 2) {
+   323→      c.equal(claimed[i], 0, `type-2 node ${i} must not be claimed by a component`);
+   324→    } else {
+   325→      c.equal(claimed[i], 1, `pin node ${i} (type ${nodes[i].type}) must be claimed by exactly one component slot`);
+   326→    }
+   327→  }
+   328→
+   329→  c.equal(sevenSegCount, 1, 'exactly one SevenSegDisplay');
+   330→  c.equal(inputLabels.length, inputBits, 'Input count equals input width');
+   331→  c.equal(new Set(inputLabels).size, inputLabels.length, 'Input labels unique');
+   332→  c.equal(
+   333→    JSON.stringify([...inputLabels].sort()),
+   334→    JSON.stringify([...inputVarNames(inputBits as InputWidth)].sort()),
+   335→    'Input labels are the variable names',
+   336→  );
+   337→  c.equal(new Set(inputIds).size, inputIds.length, 'Input layoutProperties ids unique');
+   338→  return scope;
+   339→}
+   340→
+   341→/* ------------------------------------------------------------------ */
+   342→/* Mini CircuitVerse interpreter                                       */
+   343→/* ------------------------------------------------------------------ */
+   344→
+   345→interface GateJson { inNodes: number[]; outNode: number; kind: 'not' | 'and' | 'or'; }
+   346→
+   347→class MiniSim {
+   348→  private readonly parent: number[] = [];
+   349→  private readonly inputs: { outNode: number; label: string }[] = [];
+   350→  private readonly consts: { outNode: number; state: string }[] = [];
+   351→  private readonly gates: GateJson[] = [];
+   352→  private readonly display: Record<string, number> | null = null;
+   353→  readonly driverErrors: string[] = [];
+   354→
+   355→  constructor(scope: CvScopeJson, private readonly inputBits: number) {
+   356→    const nodes = scope.allNodes;
+   357→    this.parent = nodes.map((_, i) => i);
+   358→    for (let i = 0; i < nodes.length; i++) {
+   359→      for (const j of nodes[i].connections) this.union(i, j);
+   360→    }
+   361→
+   362→    // One driver (output pin) per net — output-output shorts are import bugs.
+   363→    const driversPerNet = new Map<number, number>();
+   364→    const noteDriver = (nodeIdx: number, what: string): void => {
+   365→      const root = this.find(nodeIdx);
+   366→      driversPerNet.set(root, (driversPerNet.get(root) ?? 0) + 1);
+   367→      if ((driversPerNet.get(root) ?? 0) > 1) this.driverErrors.push(`${what} shorts another driver on net ${root}`);
+   368→    };
+   369→
+   370→    for (const { type, comp } of componentsOf(scope)) {
+   371→      const cd = comp.customData;
+   372→      if (type === 'Input') {
+   373→        this.inputs.push({ outNode: cd.nodes.output1 as number, label: comp.label as string });
+   374→        noteDriver(cd.nodes.output1 as number, 'Input');
+   375→      } else if (type === 'ConstantVal') {
+   376→        this.consts.push({ outNode: cd.nodes.output1 as number, state: cd.constructorParamaters[2] as string });
+   377→        noteDriver(cd.nodes.output1 as number, 'ConstantVal');
+   378→      } else if (type === 'NotGate') {
+   379→        this.gates.push({ inNodes: [cd.nodes.inp1 as number], outNode: cd.nodes.output1 as number, kind: 'not' });
+   380→        noteDriver(cd.nodes.output1 as number, 'NotGate');
+   381→      } else if (type === 'AndGate') {
+   382→        this.gates.push({ inNodes: cd.nodes.inp as number[], outNode: cd.nodes.output1 as number, kind: 'and' });
+   383→        noteDriver(cd.nodes.output1 as number, 'AndGate');
+   384→      } else if (type === 'OrGate') {
+   385→        this.gates.push({ inNodes: cd.nodes.inp as number[], outNode: cd.nodes.output1 as number, kind: 'or' });
+   386→        noteDriver(cd.nodes.output1 as number, 'OrGate');
+   387→      } else if (type === 'SevenSegDisplay') {
+   388→        this.display = cd.nodes as unknown as Record<string, number>;
+   389→      }
+   390→    }
+   391→  }
+   392→
+   393→  private find(i: number): number {
+   394→    while (this.parent[i] !== i) {
+   395→      this.parent[i] = this.parent[this.parent[i]];
+   396→      i = this.parent[i];
+   397→    }
+   398→    return i;
+   399→  }
+   400→
+   401→  private union(a: number, b: number): void {
+   402→    const ra = this.find(a);
+   403→    const rb = this.find(b);
+   404→    if (ra !== rb) this.parent[rb] = ra;
+   405→  }
+   406→
+   407→  /** Simulate one input code and read the eight display pins. */
+   408→  run(code: number): Record<SegmentName, 0 | 1> {
+   409→    const value = new Map<number, 0 | 1>();
+   410→    const varNames = inputVarNames(this.inputBits as InputWidth);
+   411→    for (const inp of this.inputs) {
+   412→      const bitPos = this.inputBits - 1 - varNames.indexOf(inp.label);
+   413→      value.set(this.find(inp.outNode), ((code >> bitPos) & 1) as 0 | 1);
+   414→    }
+   415→    for (const cst of this.consts) {
+   416→      value.set(this.find(cst.outNode), parseInt(cst.state, 2) as 0 | 1);
+   417→    }
+   418→
+   419→    // Combinational propagation to fixpoint (bounded by gate count).
+   420→    let progress = true;
+   421→    let guard = 0;
+   422→    while (progress && guard++ < this.gates.length + 4) {
+   423→      progress = false;
+   424→      for (const gate of this.gates) {
+   425→        const outNet = this.find(gate.outNode);
+   426→        if (value.has(outNet)) continue;
+   427→        let acc: 0 | 1 | null = null;
+   428→        let allDefined = true;
+   429→        for (const inNode of gate.inNodes) {
+   430→          const v = value.get(this.find(inNode));
+   431→          if (v === undefined) { allDefined = false; break; }
+   432→          if (gate.kind === 'not') acc = v === 1 ? 0 : 1;
+   433→          else if (acc === null) acc = v;
+   434→          else if (gate.kind === 'and') acc = acc === 1 && v === 1 ? 1 : 0;
+   435→          else acc = acc === 1 || v === 1 ? 1 : 0;
+   436→        }
+   437→        if (allDefined && acc !== null) {
+   438→          value.set(outNet, acc);
+   439→          progress = true;
+   440→        }
+   441→      }
+   442→    }
+   443→
+   444→    const pinToSegment: Record<string, SegmentName> = {
+   445→      a: 'A', b: 'B', c: 'C', d: 'D', e: 'E', f: 'F', g: 'G', dot: 'DP',
+   446→    };
+   447→    const out = {} as Record<SegmentName, 0 | 1>;
+   448→    for (const [pin, seg] of Object.entries(pinToSegment)) {
+   449→      const nodeIdx = this.display?.[pin];
+   450→      out[seg] = nodeIdx === undefined ? 0 : (value.get(this.find(nodeIdx)) ?? 0);
+   451→    }
+   452→    return out;
+   453→  }
+   454→}
+   455→
+   456→/* ------------------------------------------------------------------ */
+   457→/* SOP reference evaluation                                            */
+   458→/* ------------------------------------------------------------------ */
+   459→
+   460→function referenceTerms(engines: SegmentEngineMap, seg: SegmentName, logicSource: 'minimized' | 'direct', inputBits: number): Term[] {
+   461→  return logicSource === 'direct'
+   462→    ? engines[seg].ones.map((m) => implicantToSopTerm({ bits: m, mask: (1 << inputBits) - 1 }, inputBits))
+   463→    : engines[seg].activeSopTerms;
+   464→}
+   465→
+   466→function evalSop(terms: Term[], code: number, inputBits: number): 0 | 1 {
+   467→  const varNames = inputVarNames(inputBits as InputWidth);
+   468→  for (const term of terms) {
+   469→    if (term.literals.length === 0) return 1;
+   470→    let match = true;
+   471→    for (const lit of term.literals) {
+   472→      const bit = (code >> (inputBits - 1 - varNames.indexOf(lit.name))) & 1;
+   473→      if (bit !== (lit.complemented ? 0 : 1)) { match = false; break; }
+   474→    }
+   475→    if (match) return 1;
+   476→  }
+   477→  return 0;
+   478→}
+   479→
+   480→/* ------------------------------------------------------------------ */
+   481→/* Case runner                                                         */
+   482→/* ------------------------------------------------------------------ */
+   483→
+   484→interface CaseCtx {
+   485→  engines: SegmentEngineMap;
+   486→  result: CircuitverseBuildResult;
+   487→  stats: CircuitverseStats;
+   488→  scope: CvScopeJson;
+   489→}
+   490→
+   491→function runCase(
+   492→  name: string,
+   493→  inputBits: InputWidth,
+   494→  table: TruthTable,
+   495→  logicSource: 'minimized' | 'direct',
+   496→  extra?: (ctx: CaseCtx, c: CaseChecker) => void,
+   497→): { pass: boolean; checks: number } {
+   498→  const c = new CaseChecker();
+   499→  const title = `Verify ${name}`;
+   500→  try {
+   501→    const engines = computeEngines(table, {}, {});
+   502→    const result = buildCircuitverseProject(inputBits, engines, { title, logicSource });
+   503→    const project = validateDataReplica(result.json, title, c);
+   504→    const scope = structuralChecks(project, inputBits, c);
+   505→
+   506→    // Stats agree with the serialized file.
+   507→    const comps = componentsOf(scope);
+   508→    const count = (t: string): number => comps.filter((x) => x.type === t).length;
+   509→    c.equal(result.stats.inputs, count('Input'), 'stats.inputs vs file');
+   510→    c.equal(result.stats.inverters, count('NotGate'), 'stats.inverters vs file');
+   511→    c.equal(result.stats.andGates, count('AndGate'), 'stats.andGates vs file');
+   512→    c.equal(result.stats.orGates, count('OrGate'), 'stats.orGates vs file');
+   513→    c.equal(result.stats.constants, count('ConstantVal'), 'stats.constants vs file');
+   514→    c.equal(result.stats.intermediates, scope.allNodes.filter((nd) => nd.type === 2).length, 'stats.intermediates vs file');
+   515→    const edgeCount = scope.allNodes.reduce((s, nd) => s + nd.connections.length, 0) / 2;
+   516→    c.equal(result.stats.wires, edgeCount, 'stats.wires vs file');
+   517→    c.equal(result.stats.segments.length, 8, 'stats has 8 segment entries');
+   518→    c.equal(
+   519→      JSON.stringify(result.stats.segments.map((s) => s.segment)),
+   520→      JSON.stringify([...SEGMENT_NAMES]),
+   521→      'segment stats in SEGMENT_NAMES order',
+   522→    );
+   523→
+   524→    // Simulate every input code against the SOP reference and the truth table.
+   525→    const sim = new MiniSim(scope, inputBits);
+   526→    c.equal(sim.driverErrors.length, 0, `every net has at most one driver (${sim.driverErrors.join('; ')})`);
+   527→    const refTerms = {} as Record<SegmentName, Term[]>;
+   528→    for (const seg of SEGMENT_NAMES) refTerms[seg] = referenceTerms(engines, seg, logicSource, inputBits);
+   529→    for (let code = 0; code < (1 << inputBits); code++) {
+   530→      const segVals = sim.run(code);
+   531→      for (const seg of SEGMENT_NAMES) {
+   532→        c.equal(segVals[seg], evalSop(refTerms[seg], code, inputBits), `code ${code} segment ${seg}: circuit vs SOP reference`);
+   533→        const cell = table.rows[code].outputs[seg];
+   534→        if (cell === 0 || cell === 1) {
+   535→          c.equal(segVals[seg], cell, `code ${code} segment ${seg}: circuit vs truth table`);
+   536→        }
+   537→      }
+   538→    }
+   539→
+   540→    extra?.({ engines, result, stats: result.stats, scope }, c);
+   541→    console.log(`PASS ${name} — ${c.count} checks`);
+   542→    return { pass: true, checks: c.count };
+   543→  } catch (err) {
+   544→    const msg = err instanceof Error ? err.message : String(err);
+   545→    console.error(`FAIL ${name} — aborted after ${c.count} checks: ${msg}`);
+   546→    return { pass: false, checks: c.count };
+   547→  }
+   548→}
+   549→
+   550→/* ------------------------------------------------------------------ */
+   551→/* Test cases                                                          */
+   552→/* ------------------------------------------------------------------ */
+   553→
+   554→const bcdTable = presetTable(4, 'decimal', 'blank');
+   555→
+   556→/** Segment A ≡ variable B (single literal); DP = A·B·C (3-literal term). */
+   557→const handTable: TruthTable = {
+   558→  inputBits: 4,
+   559→  rows: Array.from({ length: 16 }, (_, m) => {
+   560→    const segA = ((m >> 1) & 1) as 0 | 1;
+   561→    const segDP = ((m & 1) !== 0 && ((m >> 1) & 1) !== 0 && ((m >> 2) & 1) !== 0 ? 1 : 0) as 0 | 1;
+   562→    return {
+   563→      input: m,
+   564→      outputs: { A: segA, B: 0, C: 0, D: 0, E: 0, F: 0, G: 0, DP: segDP },
+   565→    };
+   566→  }),
+   567→};
+   568→
+   569→const dontCareTable = presetTable(4, 'decimal', 'dontcare');
+   570→const font5Table = presetTable(5, 'font', 'blank', undefined, { fontStart: 0, tableStartCode: 0, glyphs: FONT_GLYPHS });
+   571→
+   572→interface CaseDef { name: string; run: () => { pass: boolean; checks: number }; }
+   573→
+   574→const cases: CaseDef[] = [
+   575→  {
+   576→    name: 'a: bcd-4bit-minimized',
+   577→    run: () => runCase('a: bcd-4bit-minimized', 4, bcdTable, 'minimized', ({ stats }, c) => {
+   578→      c.equal(stats.inputs, 4, 'BCD has 4 inputs');
+   579→      c.check(stats.inverters + stats.andGates + stats.orGates >= 25, 'at least 25 gates total');
+   580→      for (const seg of ['A', 'B', 'C', 'D', 'E', 'F', 'G'] as SegmentName[]) {
+   581→        c.equal(stats.segments.find((s) => s.segment === seg)?.constant, null, `segment ${seg} is gate-driven`);
+   582→      }
+   583→      c.equal(stats.segments.find((s) => s.segment === 'DP')?.constant, 0, 'DP is constant 0');
+   584→    }),
+   585→  },
+   586→  {
+   587→    name: 'b: bcd-4bit-direct',
+   588→    run: () => runCase('b: bcd-4bit-direct', 4, bcdTable, 'direct', ({ engines, stats }, c) => {
+   589→      const onesTotal = SEGMENT_NAMES.reduce((sum, seg) => sum + engines[seg].ones.length, 0);
+   590→      c.equal(stats.andGates, onesTotal, 'direct mode: one AndGate per minterm');
+   591→      const minimized = buildCircuitverseProject(4, engines, { title: 'Verify bcd-min-ref', logicSource: 'minimized' });
+   592→      c.check(stats.orGates > minimized.stats.orGates, `direct orGates (${stats.orGates}) exceed minimized (${minimized.stats.orGates})`);
+   593→      c.check(stats.andGates > minimized.stats.andGates, 'direct uses more AndGates than minimized');
+   594→      c.check(stats.maxDepth >= minimized.stats.maxDepth, 'direct depth not shallower than minimized');
+   595→    }),
+   596→  },
+   597→  {
+   598→    name: 'c: alloff',
+   599→    run: () => runCase('c: alloff', 4, allSegmentsTable(4, false), 'minimized', ({ stats, scope }, c) => {
+   600→      c.equal(stats.andGates, 0, 'no AndGates');
+   601→      c.equal(stats.orGates, 0, 'no OrGates');
+   602→      c.equal(stats.inverters, 0, 'no inverters');
+   603→      c.equal(stats.constants, 8, 'eight constants');
+   604→      for (const s of stats.segments) c.equal(s.constant, 0, `segment ${s.segment} constant 0`);
+   605→      const constStates = (scope.ConstantVal as CvComponentJson[]).map((cv) => cv.customData.constructorParamaters[2]);
+   606→      c.equal(JSON.stringify(constStates), JSON.stringify(Array(8).fill('0')), 'all ConstantVal states are "0"');
+   607→    }),
+   608→  },
+   609→  {
+   610→    name: 'd: allon',
+   611→    run: () => runCase('d: allon', 4, allSegmentsTable(4, true), 'minimized', ({ stats, scope }, c) => {
+   612→      c.equal(stats.andGates, 0, 'no AndGates');
+   613→      c.equal(stats.orGates, 0, 'no OrGates');
+   614→      c.equal(stats.inverters, 0, 'no inverters');
+   615→      c.equal(stats.constants, 8, 'eight constants');
+   616→      for (const s of stats.segments) c.equal(s.constant, 1, `segment ${s.segment} constant 1`);
+   617→      const constStates = (scope.ConstantVal as CvComponentJson[]).map((cv) => cv.customData.constructorParamaters[2]);
+   618→      c.equal(JSON.stringify(constStates), JSON.stringify(Array(8).fill('1')), 'all ConstantVal states are "1"');
+   619→    }),
+   620→  },
+   621→  {
+   622→    name: 'e: font-5bit-minimized',
+   623→    run: () => runCase('e: font-5bit-minimized', 5, font5Table, 'minimized', ({ stats, scope }, c) => {
+   624→      c.equal(stats.inputs, 5, '5-bit table has 5 inputs');
+   625→      const inputs = scope.Input as CvComponentJson[];
+   626→      const eInput = inputs.find((i) => i.label === 'E');
+   627→      c.check(!!eInput, 'an Input labeled E exists');
+   628→      const eOut = eInput!.customData.nodes.output1 as number;
+   629→      c.check(scope.allNodes[eOut].connections.length > 0, 'variable E drives at least one gate input');
+   630→      c.check(stats.andGates > 0 && stats.orGates > 0, 'font table synthesizes gates');
+   631→    }),
+   632→  },
+   633→  {
+   634→    name: 'f: single-literal-and-3literal',
+   635→    run: () => runCase('f: single-literal-and-3literal', 4, handTable, 'minimized', ({ stats }, c) => {
+   636→      const segA = stats.segments.find((s) => s.segment === 'A')!;
+   637→      const segDP = stats.segments.find((s) => s.segment === 'DP')!;
+   638→      c.equal(segA.andGates, 0, 'single-literal segment needs no AndGate');
+   639→      c.equal(segA.orGates, 0, 'single-term segment needs no OrGate');
+   640→      c.equal(segA.constant, null, 'segment A is wire driven');
+   641→      c.equal(segDP.andGates, 1, '3-literal term is one 3-input AndGate');
+   642→      c.equal(segDP.orGates, 0, 'single minterm product drives the pin directly');
+   643→      c.equal(segDP.constant, null, 'segment DP is gate driven');
+   644→      c.equal(stats.andGates, 1, 'exactly one AndGate overall');
+   645→      c.equal(stats.orGates, 0, 'no OrGates overall');
+   646→      c.equal(stats.inverters, 0, 'no complemented literals, no inverters');
+   647→      c.equal(stats.constants, 6, 'six constant-0 segments');
+   648→      c.equal(stats.maxDepth, 1, 'deepest path is input -> AND (one gate traversed)');
+   649→    }),
+   650→  },
+   651→  {
+   652→    name: 'g: dontcare-minimized',
+   653→    run: () => runCase('g: dontcare-minimized', 4, dontCareTable, 'minimized', ({ stats }, c) => {
+   654→      const xRows = dontCareTable.rows.filter((r) => SEGMENT_NAMES.some((s) => r.outputs[s] === 'X'));
+   655→      c.equal(xRows.length, 6, 'table carries six all-X rows (codes 10-15)');
+   656→      c.check(stats.andGates > 0, 'don\'t-care minimization yields gates');
+   657→    }),
+   658→  },
+   659→  {
+   660→    name: 'g: dontcare-direct',
+   661→    run: () => runCase('g: dontcare-direct', 4, dontCareTable, 'direct', (_ctx, c) => {
+   662→      const xRows = dontCareTable.rows.filter((r) => SEGMENT_NAMES.some((s) => r.outputs[s] === 'X'));
+   663→      c.equal(xRows.length, 6, 'table carries six all-X rows (codes 10-15)');
+   664→    }),
+   665→  },
+   666→  {
+   667→    // Regression: direct-SOP mode must thread custom varNames into its minterm
+   668→    // terms (E-242 was thrown for any rename before the fix).
+   669→    name: 'h: renamed-vars',
+   670→    run: () => {
+   671→      const c = new CaseChecker();
+   672→      try {
+   673→        const varNames = ['W', 'X', 'Y', 'Z'];
+   674→        const engines = computeEngines(bcdTable, {}, {}, varNames);
+   675→        for (const mode of ['minimized', 'direct'] as const) {
+   676→          const title = `Verify renamed-${mode}`;
+   677→          const result = buildCircuitverseProject(4, engines, { title, logicSource: mode, varNames });
+   678→          const project = validateDataReplica(result.json, title, c);
+   679→          const scope = project.scopes[0];
+   680→          const inputs = componentsOf(scope).filter((x) => x.type === 'Input').map((x) => x.comp.label);
+   681→          c.equal(inputs.length, 4, 'four inputs');
+   682→          for (const v of varNames) c.check(inputs.includes(v), `input label ${v} present (${mode})`);
+   683→          c.check(!inputs.includes('A'), `default label A absent in ${mode} mode`);
+   684→          c.check(result.stats.andGates > 0, `gates present (${mode})`);
+   685→          c.equal(result.stats.inputs, 4, 'stats.inputs');
+   686→        }
+   687→        console.log(`PASS h: renamed-vars — ${c.count} checks`);
+   688→        return { pass: true, checks: c.count };
+   689→      } catch (err) {
+   690→        const msg = err instanceof Error ? err.message : String(err);
+   691→        console.error(`FAIL h: renamed-vars — aborted after ${c.count} checks: ${msg}`);
+   692→        return { pass: false, checks: c.count };
+   693→      }
+   694→    },
+   695→  },
+   696→];
+   697→
+   698→let totalChecks = 0;
+   699→let failed = 0;
+   700→for (const testCase of cases) {
+   701→  const outcome = testCase.run();
+   702→  totalChecks += outcome.checks;
+   703→  if (!outcome.pass) failed++;
+   704→}
+   705→
+   706→console.log(`\nTOTAL: ${totalChecks} checks across ${cases.length} cases — ${failed === 0 ? 'ALL PASS' : `${failed} CASE(S) FAILED`}`);
+   707→process.exit(failed === 0 ? 0 : 1);
+   708→

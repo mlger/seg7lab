@@ -3,24 +3,16 @@
  * module), SVG/PNG (7-segment display) and PDF (engineering report:
  * truth table + K-maps + Boolean equations).
  */
-import type { ProjectData, SegmentEngineMap, SegmentName, Term } from '@/types/simulator';
+import type { ProjectData, SegmentName, Term } from '@/types/simulator';
 import { SEGMENT_NAMES } from '@/types/simulator';
+import type { SegmentEngineMap } from '@/logic/engine';
 import { inputVarNames, formatHex } from './binary';
 import { sopToString, posToString } from '@/logic/expressions';
 import { generateVerilog } from '@/logic/verilogGenerator';
 import { groupCellRects } from '@/logic/kmap';
 import { FONT_GLYPHS } from '@/logic/font';
+import { groupColor, hexToRgb01 } from '@/lib/colors';
 import { PdfDoc } from './pdf';
-
-const GROUP_PALETTE = [
-  '#f59e0b', '#10b981', '#f43f5e', '#a855f7',
-  '#fb923c', '#14b8a6', '#eab308', '#ec4899',
-];
-
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.slice(1), 16);
-  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
-}
 
 /* ------------------------------------------------------------------ */
 /* Text exports                                                        */
@@ -202,7 +194,7 @@ export function buildPdfReport(project: ProjectData, engines: SegmentEngineMap):
     x += colBits;
     SEGMENT_NAMES.forEach((seg) => {
       const v = row.outputs[seg];
-      const color = v === 1 ? [0.05, 0.55, 0.35] : v === 'X' ? [0.75, 0.5, 0.05] : gray;
+      const color: [number, number, number] = v === 1 ? [0.05, 0.55, 0.35] : v === 'X' ? [0.75, 0.5, 0.05] : gray;
       doc.text(x + colSeg / 2 - 3, y + 12, String(v), { size: 8, color });
       x += colSeg;
     });
@@ -234,7 +226,7 @@ export function buildPdfReport(project: ProjectData, engines: SegmentEngineMap):
           strokeWidth: 0.6,
         });
         const v = mintermCell.value;
-        const color = v === 1 ? [0.05, 0.55, 0.35] : v === 'X' ? [0.75, 0.5, 0.05] : [0.55, 0.55, 0.6];
+        const color: [number, number, number] = v === 1 ? [0.05, 0.55, 0.35] : v === 'X' ? [0.75, 0.5, 0.05] : [0.55, 0.55, 0.6];
         doc.text(x0 + c * cell + cell / 2 - 4, y0 + r * cell + cell / 2 + 6, String(v), { size: 11, bold: true, color });
         doc.text(x0 + c * cell + 2, y0 + r * cell + 8, String(mintermCell.minterm), { size: 5.5, color: [0.65, 0.65, 0.7] });
       }
@@ -242,7 +234,7 @@ export function buildPdfReport(project: ProjectData, engines: SegmentEngineMap):
     // group rectangles
     const groups = engine.sopGroups.filter((g) => g.included);
     groups.forEach((g) => {
-      const rgb = hexToRgb(GROUP_PALETTE[g.colorIndex % GROUP_PALETTE.length]);
+      const rgb = hexToRgb01(groupColor(g.colorIndex));
       groupCellRects(g, plane).forEach((r) => {
         doc.rect(x0 + r.c0 * cell + 1.5, y0 + r.r0 * cell + 1.5, (r.c1 - r.c0 + 1) * cell - 3, (r.r1 - r.r0 + 1) * cell - 3, {
           stroke: rgb,
@@ -258,7 +250,7 @@ export function buildPdfReport(project: ProjectData, engines: SegmentEngineMap):
 
   let pageCursor = 0;
   const perPage = project.inputBits === 5 ? 1 : 2;
-  SEGMENT_NAMES.forEach((seg, idx) => {
+  SEGMENT_NAMES.forEach((seg) => {
     const engine = engines[seg];
     if (pageCursor % perPage === 0) {
       doc.newPage();
@@ -287,7 +279,7 @@ export function buildPdfReport(project: ProjectData, engines: SegmentEngineMap):
     if (groups.length > 0) {
       doc.text(legendX, yBase + 6, 'Groups:', { size: 8, bold: true, color: dark });
       groups.slice(0, 7).forEach((g, i) => {
-        const rgb = hexToRgb(GROUP_PALETTE[g.colorIndex % GROUP_PALETTE.length]);
+        const rgb = hexToRgb01(groupColor(g.colorIndex));
         doc.rect(legendX, yBase + 12 + i * 12, 8, 8, { stroke: rgb, fill: [rgb[0] * 0.15 + 0.85, rgb[1] * 0.15 + 0.85, rgb[2] * 0.15 + 0.85] });
         doc.text(legendX + 12, yBase + 20 + i * 12,
           `${sopToString([g.term], 'ascii')} (${g.size} cells${g.isEssential ? ', essential' : ''})`,
@@ -296,7 +288,6 @@ export function buildPdfReport(project: ProjectData, engines: SegmentEngineMap):
     } else {
       doc.text(legendX, yBase + 6, `No groups: ${seg} is constant for all defined inputs.`, { size: 8, color: gray });
     }
-    void idx;
   });
 
   /* ---- expressions summary page ---- */

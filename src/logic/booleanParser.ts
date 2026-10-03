@@ -15,8 +15,6 @@
  * reads as the juxtaposition A·B. A digit that cannot extend a variable name
  * falls back to a constant ("A1" = A·1 unless "A1" is a variable).
  */
-import type { InputWidth } from '@/types/simulator';
-
 export type BoolAst =
   | { type: 'const'; value: 0 | 1 }
   | { type: 'var'; name: string }
@@ -272,21 +270,8 @@ export function evalBool(ast: BoolAst, env: Record<string, 0 | 1>): 0 | 1 {
     case 'or':
       return ast.operands.some((o) => evalBool(o, env) === 1) ? 1 : 0;
     case 'xor':
-      return ast.operands.reduce((acc, o) => acc ^ evalBool(o, env), 0) as 0 | 1;
+      return ast.operands.reduce<number>((acc, o) => acc ^ evalBool(o, env), 0) as 0 | 1;
   }
-}
-
-export function collectVars(ast: BoolAst): Set<string> {
-  const out = new Set<string>();
-  const walk = (node: BoolAst) => {
-    switch (node.type) {
-      case 'var': out.add(node.name); break;
-      case 'not': walk(node.operand); break;
-      case 'and': case 'or': case 'xor': node.operands.forEach(walk); break;
-    }
-  };
-  walk(ast);
-  return out;
 }
 
 /** Pretty print with ASCII notation (D' for complement). */
@@ -310,24 +295,4 @@ export function astToAscii(ast: BoolAst): string {
       // + binds looser than ^ — parenthesize or-operands (A+B)^C, not A+B^C.
       return ast.operands.map((o) => (o.type === 'and' || o.type === 'or' ? `(${astToAscii(o)})` : astToAscii(o))).join(' ^ ');
   }
-}
-
-/** Count gates needed by an AST circuit: { and, or, not, xor }. */
-export function astGateCount(ast: BoolAst): { and: number; or: number; not: number; xor: number } {
-  const count = { and: 0, or: 0, not: 0, xor: 0 };
-  const walk = (node: BoolAst) => {
-    switch (node.type) {
-      case 'not': count.not++; walk(node.operand); break;
-      case 'and': if (node.operands.length > 1) count.and++; node.operands.forEach(walk); break;
-      case 'or': if (node.operands.length > 1) count.or++; node.operands.forEach(walk); break;
-      case 'xor': if (node.operands.length > 1) count.xor++; node.operands.forEach(walk); break;
-    }
-  };
-  walk(ast);
-  return count;
-}
-
-/** Default variable names for input width (MSB first, A = MSB). */
-export function parserVarNames(bits: InputWidth): string[] {
-  return bits === 5 ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
 }
