@@ -11,8 +11,94 @@ const PAGE_W = 595;
 const PAGE_H = 842;
 
 function esc(s: string): string {
-   
   return s.replace(/[^\x20-\x7e]/g, '?').replace(/([\\()])/g, '\\$1');
+}
+
+/* ------------------------------------------------------------------ */
+/* Text metrics (Helvetica AFM widths) — needed to measure expressions */
+/* before drawing them, so long SOP/POS strings wrap or ellipsize      */
+/* instead of overlapping neighbouring lines / running off the page.   */
+/* ------------------------------------------------------------------ */
+
+/** Helvetica widths per mille for ASCII 32..126 (Adobe AFM metrics). */
+const HELV_W = [
+  278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
+  556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
+  1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778,
+  667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
+  333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556,
+  556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
+];
+
+/** Helvetica-Bold widths per mille for ASCII 32..126. */
+const HELV_BOLD_W = [
+  278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278,
+  556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611,
+  975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778,
+  667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556,
+  333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611,
+  611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
+];
+
+/** Rendered width of `s` in points at the given font size. */
+export function textWidth(s: string, size: number, bold = false): number {
+  const t = bold ? HELV_BOLD_W : HELV_W;
+  let w = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i) - 32;
+    w += c >= 0 && c < t.length ? t[c] : 556;
+  }
+  return (w / 1000) * size;
+}
+
+/**
+ * Greedy word-wrap to `maxWidth` points. Words longer than the whole line
+ * (giant unspaced terms) are hard-broken so every line fits.
+ */
+export function wrapText(s: string, size: number, bold: number | boolean, maxWidth: number): string[] {
+  const boldFlag = bold === true;
+  const lines: string[] = [];
+  let cur = '';
+  for (const word of s.split(/\s+/).filter(Boolean)) {
+    const candidate = cur ? `${cur} ${word}` : word;
+    if (textWidth(candidate, size, boldFlag) <= maxWidth || !cur) {
+      // first word always taken; oversized single words hard-break below
+      if (!cur && textWidth(word, size, boldFlag) > maxWidth) {
+        let piece = '';
+        for (const ch of word) {
+          if (textWidth(piece + ch, size, boldFlag) > maxWidth && piece) {
+            lines.push(piece);
+            piece = ch;
+          } else {
+            piece += ch;
+          }
+        }
+        cur = piece;
+        continue;
+      }
+      cur = candidate;
+    } else {
+      lines.push(cur);
+      cur = word;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+/** Ellipsize `s` with a trailing "..." so it fits `maxWidth` points. */
+export function fitText(s: string, size: number, bold: number | boolean, maxWidth: number): string {
+  const boldFlag = bold === true;
+  if (textWidth(s, size, boldFlag) <= maxWidth) return s;
+  const ell = '...';
+  let lo = 0;
+  let hi = s.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (textWidth(s.slice(0, mid) + ell, size, boldFlag) <= maxWidth) lo = mid;
+    else hi = mid - 1;
+  }
+  return s.slice(0, lo) + ell;
 }
 
 function n2(v: number): string {

@@ -1,6 +1,7 @@
 /**
- * Gate inspect panel: live inputs/output, plain-language description and the
- * simplified expression the inspected gate was built from.
+ * Gate inspect panel: live inputs/output, plain-language description, the
+ * expression the inspected gate was built from, and — for term gates — the
+ * matching K-map cover group (color swatch + size + essentiality).
  */
 'use client';
 
@@ -12,6 +13,13 @@ import type { Circuit, CNode } from '@/logic/circuitNetlist';
 import { TermView } from '../ExplainBlock';
 import { GATE_INFO } from './gateVisuals';
 
+/** K-map cover group info for a term gate (matches the K-map tab's colors). */
+export interface InspectorAccent {
+  color: string;
+  size: number;
+  essential: boolean;
+}
+
 interface GateInspectorProps {
   selectedNode: CNode;
   circuit: Circuit;
@@ -20,9 +28,19 @@ interface GateInspectorProps {
   currentInput: number;
   form: 'sop' | 'pos';
   terms: Term[];
+  /** Decoder mode: the segment owning the selected node. */
+  ownerSegment?: string;
+  /** Canonical form flag — changes the "implemented from" wording. */
+  isCanonical?: boolean;
+  /** K-map group accent when the node is a term gate. */
+  accent?: InspectorAccent | null;
 }
 
-export function GateInspector({ selectedNode, circuit, values, activeSegment, currentInput, form, terms }: GateInspectorProps) {
+export function GateInspector({
+  selectedNode, circuit, values, activeSegment, currentInput, form, terms,
+  ownerSegment, isCanonical, accent,
+}: GateInspectorProps) {
+  const segLabel = ownerSegment ?? activeSegment;
   return (
     <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -32,7 +50,7 @@ export function GateInspector({ selectedNode, circuit, values, activeSegment, cu
           {selectedNode.type === 'input'
             ? `input variable ${selectedNode.varName}`
             : selectedNode.type === 'out'
-              ? `segment output driver`
+              ? `segment ${segLabel} output driver`
               : `${selectedNode.operandIds.length}-input gate`}
         </span>
         <Badge className={cn(
@@ -47,7 +65,7 @@ export function GateInspector({ selectedNode, circuit, values, activeSegment, cu
       <p className="mt-1 text-xs text-muted-foreground">
         {GATE_INFO[selectedNode.type.toUpperCase()]?.desc ??
           (selectedNode.type === 'out'
-            ? `Drives segment ${activeSegment} for every input combination.`
+            ? `Drives segment ${segLabel} for every input combination.`
             : `Current value with input m${currentInput}.`)}
         {GATE_INFO[selectedNode.type.toUpperCase()] && (
           <span className="ml-1 font-mono">{GATE_INFO[selectedNode.type.toUpperCase()].expr}</span>
@@ -68,14 +86,27 @@ export function GateInspector({ selectedNode, circuit, values, activeSegment, cu
                     : 'border-border bg-muted/40 text-muted-foreground',
                 )}
               >
-                in{i + 1}: {src.varName ?? src.type} = {sv}
+                in{i + 1}: {src.varName ?? src.label} = {sv}
               </span>
             );
           })}
         </div>
       )}
+      {accent && (
+        <p className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span
+            className="inline-block h-3 w-3 rounded-sm border"
+            style={{ backgroundColor: `${accent.color}33`, borderColor: accent.color }}
+            aria-hidden
+          />
+          K-map group · {accent.size} cell{accent.size === 1 ? '' : 's'}
+          {accent.essential ? ' · essential prime implicant' : ''} — the same color outlines it
+          in the K-map tab.
+        </p>
+      )}
       <p className="mt-2 text-[11px] text-muted-foreground">
-        Implemented from the simplified {form.toUpperCase()} expression:{' '}
+        Implemented from the {isCanonical ? 'canonical' : 'simplified'} {form.toUpperCase()} expression of
+        segment {segLabel}:{' '}
         {terms.length === 0
           ? form === 'sop' ? 'constant 0' : 'constant 1'
           : terms.map((t, i) => (

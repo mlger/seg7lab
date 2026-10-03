@@ -138,6 +138,26 @@ export function buildCircuit(terms: Term[], form: 'sop' | 'pos', varNames: strin
 }
 
 /**
+ * Longest-path depth of every node: inputs/constants are level 0, every other
+ * node is 1 + max(level of its operands). Used by the circuit tab's level
+ * trace (propagation step-through). Circuits are DAGs by construction.
+ */
+export function computeLevels(circuit: Circuit): Map<string, number> {
+  const levels = new Map<string, number>();
+  const visit = (n: CNode): number => {
+    const cached = levels.get(n.id);
+    if (cached !== undefined) return cached;
+    let v = 0;
+    for (const id of n.operandIds) v = Math.max(v, visit(circuit.byId.get(id)!));
+    const lv = n.operandIds.length === 0 ? 0 : v + 1;
+    levels.set(n.id, lv);
+    return lv;
+  };
+  for (const n of circuit.nodes) visit(n);
+  return levels;
+}
+
+/**
  * Evaluate every node of the circuit for the given input code (minterm index).
  * Returns node id → logic value. Memoized per node id inside the call, so DAG
  * sharing (shared NOT rails / single-term roots) costs nothing extra.

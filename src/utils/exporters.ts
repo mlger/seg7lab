@@ -12,7 +12,7 @@ import { generateVerilog } from '@/logic/verilogGenerator';
 import { groupCellRects } from '@/logic/kmap';
 import { FONT_GLYPHS } from '@/logic/font';
 import { groupColor, hexToRgb01 } from '@/lib/colors';
-import { PdfDoc } from './pdf';
+import { PdfDoc, wrapText, fitText } from './pdf';
 
 /* ------------------------------------------------------------------ */
 /* Text exports                                                        */
@@ -107,12 +107,48 @@ export function serializeSvg(svg: SVGSVGElement): string {
   return new XMLSerializer().serializeToString(clone);
 }
 
+/**
+ * Clone an SVG with computed paint properties inlined so it renders
+ * standalone (no stylesheet). The logic-circuit canvas styles itself with
+ * Tailwind classes (fill-foreground etc.) which mean nothing outside the
+ * app — this bakes the resolved values into the clone.
+ */
+function inlineSvgClone(svg: SVGSVGElement): SVGSVGElement {
+  const clone = svg.cloneNode(true) as SVGSVGElement;
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  const src = svg.querySelectorAll<SVGElement>('*');
+  const dst = clone.querySelectorAll<SVGElement>('*');
+  const props = [
+    'fill', 'stroke', 'stroke-width', 'stroke-dasharray', 'stroke-linecap',
+    'opacity', 'font-family', 'font-size', 'font-weight',
+  ];
+  src.forEach((el, i) => {
+    const cs = window.getComputedStyle(el);
+    for (const p of props) {
+      const v = cs.getPropertyValue(p);
+      if (v) dst[i].style.setProperty(p, v);
+    }
+  });
+  return clone;
+}
+
+/** Circuit-canvas SVG export (self-contained: styles inlined). */
+export function buildCircuitSvgBlob(svg: SVGSVGElement): Blob {
+  return new Blob([new XMLSerializer().serializeToString(inlineSvgClone(svg))], {
+    type: 'image/svg+xml;charset=utf-8',
+  });
+}
+
 export function buildSvgBlob(svg: SVGSVGElement): Blob {
   return new Blob([serializeSvg(svg)], { type: 'image/svg+xml;charset=utf-8' });
 }
 
-export async function buildPngBlob(svg: SVGSVGElement, scale = 2): Promise<Blob> {
-  const data = serializeSvg(svg);
+export async function buildPngBlob(
+  svg: SVGSVGElement,
+  scale = 2,
+  opts?: { background?: string; serialize?: (s: SVGSVGElement) => string },
+): Promise<Blob> {
+  const data = opts?.serialize ? opts.serialize(svg) : serializeSvg(svg);
   const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(data)}`;
   const img = new Image();
   await new Promise<void>((resolve, reject) => {
@@ -126,7 +162,7 @@ export async function buildPngBlob(svg: SVGSVGElement, scale = 2): Promise<Blob>
   canvas.height = Math.round(vb.height * scale);
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('E-231: canvas unavailable');
-  ctx.fillStyle = '#0a0a0c';
+  ctx.fillStyle = opts?.background ?? '#0a0a0c';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   return new Promise<Blob>((resolve, reject) => {
@@ -134,6 +170,14 @@ export async function buildPngBlob(svg: SVGSVGElement, scale = 2): Promise<Blob>
       (b) => (b ? resolve(b) : reject(new Error('E-232: PNG encoding failed'))),
       'image/png',
     );
+  });
+}
+
+/** Circuit-canvas PNG export: styles inlined + theme background. */
+export async function buildCircuitPngBlob(svg: SVGSVGElement, background: string, scale = 2): Promise<Blob> {
+  return buildPngBlob(svg, scale, {
+    background,
+    serialize: (s) => new XMLSerializer().serializeToString(inlineSvgClone(s)),
   });
 }
 
@@ -147,6 +191,7 @@ export function buildPdfReport(project: ProjectData, engines: SegmentEngineMap):
   const dark: [number, number, number] = [0.12, 0.12, 0.15];
   const gray: [number, number, number] = [0.45, 0.45, 0.5];
   const M = 40; // margin
+  const PAGE_W_AVAIL = doc.pageWidth - 2 * M; // usable text width
 
   /* ---- page 1: header + truth table ---- */
   doc.newPage();
@@ -269,10 +314,12 @@ export function buildPdfReport(project: ProjectData, engines: SegmentEngineMap):
     pageCursor++;
     const yBase = kmapTop + slot * 330;
     doc.text(M, yBase - 30, `Segment ${seg}`, { size: 11, bold: true, color: dark });
+    // Width-aware: long expressions ellipsize to the page margin instead of
+    // running off the page (full text lives on the expressions page).
     const expr = sopToString(engine.activeSopTerms, 'ascii') || '0';
-    doc.text(M + 70, yBase - 30, `${seg} = ${expr}`, { size: 9 });
+    doc.text(M + 70, yBase - 30, fitText(`${seg} = ${expr}`, 9, false, PAGE_W_AVAIL - 70), { size: 9 });
     const statsLine = `SOP: ${engine.stats.simplifiedSop.terms}T/${engine.stats.simplifiedSop.literals}L  (canonical ${engine.stats.canonicalSop.terms}T/${engine.stats.canonicalSop.literals}L)   POS: ${posToString(engine.activePosTerms, 'ascii')}`;
-    doc.text(M, yBase - 16, statsLine.length > 150 ? `${statsLine.slice(0, 147)}...` : statsLine, { size: 7.5, color: gray });
+    doc.text(M, yBase - 16, fitText(statsLine, 7.5, false, PAGE_W_AVAIL), { size: 7.5, color: gray });
 
     const planes = engine.kmap.planes;
     planes.forEach((_, p) => {
@@ -297,7 +344,7 @@ export function buildPdfReport(project: ProjectData, engines: SegmentEngineMap):
           { size: 7.5 });
       });
       if (groups.length > shown.length) {
-        doc.text(M + 34, legendY + 12 + Math.ceil(shown.length / 2) * 13,
+        doc.text(M + 34, legendY + 12 + Math.ceil(shown.length / 2) * 13 + 7,
           `... +${groups.length - shown.length} more prime implicants (see the K-map tab)`,
           { size: 7.5, color: gray });
       }
@@ -307,27 +354,45 @@ export function buildPdfReport(project: ProjectData, engines: SegmentEngineMap):
   });
 
   /* ---- expressions summary page ---- */
+  // Every line is width-measured and wrapped: the old fixed layout drew the
+  // minterm listing at the same y as the POS expression (overlap) and let
+  // long SOP/POS strings run past the page edge.
   doc.newPage();
   doc.text(M, 52, 'BOOLEAN EXPRESSIONS', { size: 14, bold: true, color: dark });
   doc.text(M, 68, `Minimized with Quine-McCluskey; variables ${vars.join(' ')} (${vars[0]} = MSB). A' denotes NOT A.`, { size: 9, color: gray });
+  const EXPR_INDENT = 28; // hanging indent under the "SOP: " / "POS: " prefix
+  const EXPR_W = PAGE_W_AVAIL - EXPR_INDENT;
+  const sopLinesFor = (engine: SegmentEngineMap[SegmentName]) =>
+    wrapText(sopToString(engine.activeSopTerms, 'ascii') || '0', 9, false, EXPR_W);
+  const posLinesFor = (engine: SegmentEngineMap[SegmentName]) =>
+    wrapText(posToString(engine.activePosTerms, 'ascii') || '1', 9, false, EXPR_W);
+  const blockHeight = (engine: SegmentEngineMap[SegmentName]) =>
+    12 + sopLinesFor(engine).length * 11 + posLinesFor(engine).length * 11 + 22;
   let ey = 100;
   SEGMENT_NAMES.forEach((seg) => {
     const engine = engines[seg];
-    doc.text(M, ey, `Segment ${seg}`, { size: 10, bold: true, color: dark });
-    doc.text(M + 70, ey, `SOP: ${sopToString(engine.activeSopTerms, 'ascii')}`, { size: 9 });
-    doc.text(M + 70, ey + 12, `POS: ${posToString(engine.activePosTerms, 'ascii')}`, { size: 9 });
-    doc.text(M, ey + 12,
-      `m(${engine.ones.join(',') || '-'}) d(${engine.dontCares.join(',') || '-'})`,
-      { size: 7.5, color: gray });
-    doc.text(M, ey + 24,
-      `primes: ${engine.sop.primes.length}   cover: ${engine.stats.simplifiedSop.terms} terms / ${engine.stats.simplifiedSop.literals} literals   canonical: ${engine.stats.canonicalSop.literals} literals`,
-      { size: 7.5, color: gray });
-    doc.line(M, ey + 32, doc.pageWidth - M, ey + 32, { color: [0.88, 0.88, 0.9], width: 0.5 });
-    ey += 46;
-    if (ey > doc.pageHeight - 60) {
+    if (ey + blockHeight(engine) > doc.pageHeight - 50) {
       doc.newPage();
       ey = 70;
     }
+    doc.text(M, ey, `Segment ${seg}`, { size: 10, bold: true, color: dark });
+    doc.text(M + 70, ey, fitText(
+      `primes: ${engine.sop.primes.length}   cover: ${engine.stats.simplifiedSop.terms} terms / ${engine.stats.simplifiedSop.literals} literals   canonical: ${engine.stats.canonicalSop.literals} literals`,
+      7.5, false, PAGE_W_AVAIL - 70), { size: 7.5, color: gray });
+    let ly = ey + 12;
+    sopLinesFor(engine).forEach((line, i) => {
+      doc.text(M + (i === 0 ? 0 : EXPR_INDENT), ly, i === 0 ? `SOP: ${line}` : line, { size: 9 });
+      ly += 11;
+    });
+    posLinesFor(engine).forEach((line, i) => {
+      doc.text(M + (i === 0 ? 0 : EXPR_INDENT), ly, i === 0 ? `POS: ${line}` : line, { size: 9 });
+      ly += 11;
+    });
+    doc.text(M, ly + 2, fitText(
+      `m(${engine.ones.join(',') || '-'}) d(${engine.dontCares.join(',') || '-'})`,
+      7.5, false, PAGE_W_AVAIL), { size: 7.5, color: gray });
+    doc.line(M, ly + 10, doc.pageWidth - M, ly + 10, { color: [0.88, 0.88, 0.9], width: 0.5 });
+    ey = ly + 26;
   });
 
   /* ---- verilog appendix ---- */
@@ -337,7 +402,7 @@ export function buildPdfReport(project: ProjectData, engines: SegmentEngineMap):
   const vlog = buildVerilogModule(project, engines);
   const vlines = vlog.split('\n');
   vlines.slice(0, 60).forEach((line, i) => {
-    doc.text(M, 92 + i * 11.5, line.length > 95 ? line.slice(0, 95) : line, { size: 7.5 });
+    doc.text(M, 92 + i * 11.5, fitText(line, 7.5, false, PAGE_W_AVAIL), { size: 7.5 });
   });
   if (vlines.length > 60) {
     doc.text(M, 92 + 60 * 11.5 + 8,
