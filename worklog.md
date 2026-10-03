@@ -641,3 +641,25 @@ Stage Summary:
 - Circuit tab P1-P4 fully implemented: canonical-vs-minimized now REAL, form chips, fit/fullscreen, cone tracing, whole-decoder view with shared rails + band stats, sweep player, level trace, K-map group accents, circuit SVG/PNG export, full keyboard support.
 - Changed files: src/utils/pdf.ts (metrics+wrap/fit), src/utils/exporters.ts (expressions page, K-map lines, legend, Verilog, inlineSvgClone, buildCircuitSvgBlob/buildCircuitPngBlob, buildPngBlob opts), src/logic/circuitNetlist.ts (computeLevels — additive), src/logic/decoderCircuit.ts (NEW), src/components/simulator/logic-circuit/{LogicCircuitCard,CircuitCanvas,GateInspector}.tsx (reworked), src/app/globals.css (focus rings).
 - Untouched invariants: buildCircuit semantics, circuitverse.ts, verify-logic pins, verify-circuitverse 64,205 checks.
+---
+Task ID: 11
+Agent: main (Z.ai Code)
+Task: PLAN ONLY (user: "circuit tab fix the navigation dont implement yet suggest a plan") — Circuit tab navigation audit + fix plan. No code changes made.
+
+Work Log:
+- Read post-Task-10 sources: LogicCircuitCard.tsx (790 lines: mode toggle, FORM_CHIPS, fit key, band chips, SegmentSelector, fullscreen overlay, keyboard handler), CircuitCanvas.tsx (band separators aria-hidden + no handlers), SegmentSelector.tsx.
+- Live browser audit (dedicated session 'plan-nav', BCD preset): switched to Circuit tab → Full decoder → verified:
+  * Minimized decoder viewBox 920x2104, auto-fit scale 0.206 (thumbnail).
+  * Zoomed in 3 steps to 0.356, clicked band chip "G 6g" → transform reset to 0.206 fit, pan UNCHANGED: chip neither navigates the viewport NOR preserves the user's zoom (maybeFit key includes activeSegment although the decoder circuit is invariant to it).
+  * Canonical (Σm) decoder: viewBox 920x7736, fit scale = ZOOM_MIN floor 0.1 — fully illegible; reading any band needs ~10x zoom + thousands of units of blind panning with zero wayfinding.
+  * Zero page errors. Session closed, temp screenshot removed.
+- Code-proven remaining defects: wheel zoom not cursor-anchored; band separator labels not clickable; LIVE OUTPUT click + SegmentSelector in decoder mode = same setActiveSegment no-op + refit jolt; fullscreen overlay covers header toolbar (TRACE/form/mode/chips/sweep unreachable, only zoom/fit/exit); svg aria-label always "segment A" even in decoder mode; no zoom readout, no position indicator; no PageUp/Down or band-jump keys; inspector appears below the fold when selecting a gate while zoomed into a far band.
+- Presented phased fix plan (below). Repo untouched, dev server untouched.
+
+Stage Summary:
+- Deliverable = Circuit tab NAVIGATION fix plan (awaiting user approval), evidence-backed:
+  * P-A Honest nav affordances (bug fixes): A1 drop activeSegment from fit key in decoder mode; A2 band chips actually jump viewport to the band (fitRect on band bounds, zoom cap ~1.1) + keep setActiveSegment; A3 SegmentSelector + LIVE OUTPUT clicks behave the same in decoder mode; A4 canvas band separator labels become clickable/focusable jump targets; A5 decoder-aware svg aria-label.
+  * P-B Wayfinding for the 7,736-unit canvas: B1 shared fitRect(minX,minY,maxX,maxY,{maxZoom}) utility; B2 position-enriched band chip rail (active band + viewport-center band indicator — 1D rail chosen over 2D minimap); B3 prev/next band stepper + PageUp/PageDown; B4 zoom % readout (click = reset 100%).
+  * P-C Natural feel: C1 cursor-anchored wheel zoom; C2 keyboard completeness (PageUp/Down band jump, Home/End, 1-8 direct band); C3 fullscreen parity (band stepper + TRACE in overlay toolbar); C4 inspector scrollIntoView on selection; C5 no focus stealing on chip clicks.
+  * P-D Gate: dedicated agent-browser E2E (chip jump keeps zoom sane + pan changes; band label click; PageDown; wheel anchor math; fullscreen parity; segment-mode regression), lint 0 / tsc 0 / verify:logic 283 / verify-circuitverse 64,205 (circuitverse.ts + netlist builders untouched — viewport math only).
+- Decision points presented to user: chip single-vs-double click semantics (rec: click = center band, dbl = open segment alone), minimap style (rec: 1D rail), jump zoom cap (rec: 1.1).
