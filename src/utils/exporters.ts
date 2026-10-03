@@ -205,8 +205,11 @@ export function buildPdfReport(project: ProjectData, engines: SegmentEngineMap):
 
   /* ---- K-map pages ---- */
   const cell = 34;
-  const kmapTop = 96;
-  const drawKmapGrid = (x0: number, y0: number, engine: SegmentEngineMap[SegmentName], plane: number, planeLabel: string | null) => {
+  // Header zone per block: title at yBase-30, stats at yBase-16, column
+  // labels at yBase-6 — generous gaps so nothing piles up (the first map on
+  // each page sits right under the page subtitle and used to collide with it).
+  const kmapTop = 122;
+  const drawKmapGrid = (x0: number, y0: number, engine: SegmentEngineMap[SegmentName], plane: number) => {
     const kmap = engine.kmap;
     // column labels
     kmap.colLabels.forEach((cl, c) => {
@@ -242,10 +245,14 @@ export function buildPdfReport(project: ProjectData, engines: SegmentEngineMap):
         });
       });
     });
-    // axis titles
-    doc.text(x0 + 2 * cell - 6, y0 - 18, `${kmap.colVars.join('')} (cols)`, { size: 7, color: gray });
-    doc.text(x0 - 34, y0 + 2 * cell + 2, `${kmap.rowVars.join('')} (rows)`, { size: 7, color: [0.9, 0.9, 0.9] });
-    if (planeLabel) doc.text(x0 + 2 * cell - 14, y0 + 4 * cell + 12, planeLabel, { size: 8, bold: true, color: dark });
+    // axis caption BELOW the grid (the old top/side captions collided with
+    // the header lines and the side one was drawn near-invisible); includes
+    // the plane variable for 5-bit two-plane maps (was hardcoded to "E").
+    const axis = `${kmap.colVars.join('')} = columns / ${kmap.rowVars.join('')} = rows`;
+    const caption = kmap.planes.length > 1 && kmap.planeVar
+      ? `${kmap.planeVar} = ${plane} plane, ${axis}`
+      : axis;
+    doc.text(x0, y0 + 4 * cell + 14, caption, { size: 8, color: dark });
   };
 
   let pageCursor = 0;
@@ -261,32 +268,41 @@ export function buildPdfReport(project: ProjectData, engines: SegmentEngineMap):
     const slot = pageCursor;
     pageCursor++;
     const yBase = kmapTop + slot * 330;
-    doc.text(M, yBase - 26, `Segment ${seg}`, { size: 11, bold: true, color: dark });
+    doc.text(M, yBase - 30, `Segment ${seg}`, { size: 11, bold: true, color: dark });
     const expr = sopToString(engine.activeSopTerms, 'ascii') || '0';
-    doc.text(M + 70, yBase - 26, `${seg} = ${expr}`, { size: 9 });
-    doc.text(M, yBase - 14,
-      `SOP: ${engine.stats.simplifiedSop.terms}T/${engine.stats.simplifiedSop.literals}L  (canonical ${engine.stats.canonicalSop.terms}T/${engine.stats.canonicalSop.literals}L)   POS: ${posToString(engine.activePosTerms, 'ascii')}`,
-      { size: 7.5, color: gray });
+    doc.text(M + 70, yBase - 30, `${seg} = ${expr}`, { size: 9 });
+    const statsLine = `SOP: ${engine.stats.simplifiedSop.terms}T/${engine.stats.simplifiedSop.literals}L  (canonical ${engine.stats.canonicalSop.terms}T/${engine.stats.canonicalSop.literals}L)   POS: ${posToString(engine.activePosTerms, 'ascii')}`;
+    doc.text(M, yBase - 16, statsLine.length > 150 ? `${statsLine.slice(0, 147)}...` : statsLine, { size: 7.5, color: gray });
 
     const planes = engine.kmap.planes;
     planes.forEach((_, p) => {
       const x0 = M + 34 + p * (4 * cell + 90);
-      drawKmapGrid(x0, yBase, engine, p, planes.length > 1 ? `E = ${p}` : null);
+      drawKmapGrid(x0, yBase, engine, p);
     });
-    // group legend
-    const legendX = M + 34 + planes.length * (4 * cell + 90) - 70;
+
+    // group legend BELOW the maps, two columns (the old right-hand column
+    // crowded the page margin on two-plane 5-bit maps)
+    const legendY = yBase + 4 * cell + 34;
     const groups = engine.sopGroups;
     if (groups.length > 0) {
-      doc.text(legendX, yBase + 6, 'Groups:', { size: 8, bold: true, color: dark });
-      groups.slice(0, 7).forEach((g, i) => {
+      doc.text(M + 34, legendY, 'Groups:', { size: 8, bold: true, color: dark });
+      const shown = groups.slice(0, 8);
+      shown.forEach((g, i) => {
+        const gx = M + 34 + (i % 2) * 200;
+        const gy = legendY + 12 + Math.floor(i / 2) * 13;
         const rgb = hexToRgb01(groupColor(g.colorIndex));
-        doc.rect(legendX, yBase + 12 + i * 12, 8, 8, { stroke: rgb, fill: [rgb[0] * 0.15 + 0.85, rgb[1] * 0.15 + 0.85, rgb[2] * 0.15 + 0.85] });
-        doc.text(legendX + 12, yBase + 20 + i * 12,
+        doc.rect(gx, gy, 8, 8, { stroke: rgb, fill: [rgb[0] * 0.15 + 0.85, rgb[1] * 0.15 + 0.85, rgb[2] * 0.15 + 0.85] });
+        doc.text(gx + 12, gy + 7,
           `${sopToString([g.term], 'ascii')} (${g.size} cells${g.isEssential ? ', essential' : ''})`,
           { size: 7.5 });
       });
+      if (groups.length > shown.length) {
+        doc.text(M + 34, legendY + 12 + Math.ceil(shown.length / 2) * 13,
+          `... +${groups.length - shown.length} more prime implicants (see the K-map tab)`,
+          { size: 7.5, color: gray });
+      }
     } else {
-      doc.text(legendX, yBase + 6, `No groups: ${seg} is constant for all defined inputs.`, { size: 8, color: gray });
+      doc.text(M + 34, legendY, `No groups: ${seg} is constant for all defined inputs.`, { size: 8, color: gray });
     }
   });
 
@@ -319,9 +335,15 @@ export function buildPdfReport(project: ProjectData, engines: SegmentEngineMap):
   doc.text(M, 52, 'VERILOG IMPLEMENTATION', { size: 14, bold: true, color: dark });
   doc.text(M, 68, 'Synthesizable continuous assignments from the minimized SOP covers.', { size: 9, color: gray });
   const vlog = buildVerilogModule(project, engines);
-  vlog.split('\n').slice(0, 60).forEach((line, i) => {
+  const vlines = vlog.split('\n');
+  vlines.slice(0, 60).forEach((line, i) => {
     doc.text(M, 92 + i * 11.5, line.length > 95 ? line.slice(0, 95) : line, { size: 7.5 });
   });
+  if (vlines.length > 60) {
+    doc.text(M, 92 + 60 * 11.5 + 8,
+      `... truncated after 60 of ${vlines.length} lines - use the Verilog module export for the full source.`,
+      { size: 8, color: gray });
+  }
 
   return doc.build();
 }

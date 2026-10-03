@@ -648,7 +648,7 @@ export const useSimulator = create<SimulatorState>((set, get) => ({
       appliedPresetId: bcd.id,
       appliedPresetName: bcd.name,
       undoSnapshot: null,
-      lastAction: 'Project reset to default BCD decoder',
+      lastAction: 'Project reset to the default decoder',
     });
     persist(get());
   },

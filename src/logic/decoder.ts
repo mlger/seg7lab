@@ -39,13 +39,20 @@ export function isSegmentUndefined(output: SegmentOutput): boolean {
   return output === 'X';
 }
 
-/** Default project: classic BCD-to-7-segment decoder, don't-cares for 10-15. */
+/**
+ * Default project name. Generic on purpose: the simulator covers any table
+ * (hex, fonts, custom patterns), not just BCD — the default table merely
+ * boots as the classic 0-9 decimal decoder.
+ */
+export const DEFAULT_PROJECT_NAME = '7-Segment Decoder (default)';
+
+/** Default project: classic 0-9 decimal decoder, don't-cares for 10-15. */
 export function buildDefaultProject(): ProjectData {
   const inputBits = 4;
   const table = presetTable(inputBits, 'decimal', 'dontcare');
   return {
     version: 1,
-    name: 'BCD Decoder (default)',
+    name: DEFAULT_PROJECT_NAME,
     inputBits,
     displayMode: 'decimal',
     invalidBehavior: 'dontcare',

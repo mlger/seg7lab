@@ -52,6 +52,11 @@ export interface SevenSegmentSvgProps {
   className?: string;
   svgRef?: React.Ref<SVGSVGElement>;
   title?: string;
+  /** Suffix appended to each interactive segment's accessible name when the
+   *  click does something other than toggling the truth-table cell (e.g. the
+   *  circuit card's live display, where a click selects that segment). Keeps
+   *  same-page interactive displays distinguishable for screen readers. */
+  clickHint?: string;
 }
 
 export function SevenSegmentSvg({
@@ -62,6 +67,7 @@ export function SevenSegmentSvg({
   className,
   svgRef,
   title,
+  clickHint,
 }: SevenSegmentSvgProps) {
   const glowId = useId().replace(/[^a-zA-Z0-9]/g, '');
   const litOpacity = 0.55 + 0.45 * settings.brightness;
@@ -118,7 +124,7 @@ export function SevenSegmentSvg({
                 tabIndex={interactive ? 0 : undefined}
                 role={interactive ? 'switch' : undefined}
                 aria-checked={lit}
-                aria-label={`Decimal point, ${lit ? 'on' : 'off'}`}
+                aria-label={`Decimal point, ${lit ? 'on' : 'off'}${clickHint ? ` — ${clickHint}` : ''}`}
                 onClick={interactive ? () => onSegmentClick?.(seg) : undefined}
                 onKeyDown={
                   interactive
@@ -150,7 +156,7 @@ export function SevenSegmentSvg({
               tabIndex={interactive ? 0 : undefined}
               role={interactive ? 'switch' : undefined}
               aria-checked={lit}
-              aria-label={`Segment ${seg}, ${lit ? 'on' : 'off'}${undef ? ', don\u2019t care' : ''}`}
+              aria-label={`Segment ${seg}, ${lit ? 'on' : 'off'}${undef ? ', don\u2019t care' : ''}${clickHint ? ` — ${clickHint}` : ''}`}
               onClick={interactive ? () => onSegmentClick?.(seg) : undefined}
               onKeyDown={
                 interactive

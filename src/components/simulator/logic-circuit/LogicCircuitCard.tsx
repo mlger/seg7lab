@@ -15,12 +15,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CircuitBoard, ZoomIn, ZoomOut, Maximize, RotateCcw, MousePointerClick } from 'lucide-react';
 import { useSimulator } from '@/lib/store';
 import { useEngines } from '@/lib/useEngine';
+import { cn } from '@/lib/utils';
 import { ExplainBlock } from '../ExplainBlock';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SegmentSelector } from '../shared/SegmentSelector';
+import { SevenSegmentSvg } from '../SevenSegmentDisplay';
 import { buildCircuit, evaluateCircuit, type CNode } from '@/logic/circuitNetlist';
+import { SEGMENT_NAMES, type SegmentPatternX } from '@/types/simulator';
 import { CircuitCanvas } from './CircuitCanvas';
 import { GateInspector } from './GateInspector';
 import { GateReference } from './GateReference';
@@ -33,6 +36,7 @@ export function LogicCircuitCard() {
   const inputBits = useSimulator((s) => s.inputBits);
   const toggleBit = useSimulator((s) => s.toggleBit);
   const explain = useSimulator((s) => s.explainMode);
+  const displaySettings = useSimulator((s) => s.displaySettings);
   const engines = useEngines();
 
   const form = expressionForm === 'pos' || expressionForm === 'cpos' ? 'pos' : 'sop';
@@ -68,6 +72,31 @@ export function LogicCircuitCard() {
   const values = useMemo(
     () => evaluateCircuit(circuit, currentInput, inputBits, varNames),
     [circuit, currentInput, inputBits, varNames],
+  );
+
+  /**
+   * Live logic levels of ALL eight segments for the current input: every
+   * segment's minimized circuit ({form}) is evaluated, so the glyph shows
+   * exactly what the gate network drives right now. Don't-care cells resolve
+   * to the cover's actual choice — the physical truth the circuit delivers.
+   */
+  const liveOutputs = useMemo(() => {
+    const out: SegmentPatternX = {} as SegmentPatternX;
+    for (const seg of SEGMENT_NAMES) {
+      const e = engines[seg];
+      const segTerms = form === 'sop' ? e.activeSopTerms : e.activePosTerms;
+      const segCircuit = buildCircuit(segTerms, form, varNames);
+      out[seg] = evaluateCircuit(segCircuit, currentInput, inputBits, varNames).get('out') ?? 0;
+    }
+    return out;
+  }, [engines, form, varNames, currentInput, inputBits]);
+
+  /** Logic-level view of the display: user colors/brightness, but polarity
+   *  forced to common-cathode — this panel shows gate outputs, not the
+   *  physically-driven LED (that is the main display card's job). */
+  const liveSettings = useMemo(
+    () => ({ ...displaySettings, commonAnode: false as const, reverseLogic: false, showDP: true }),
+    [displaySettings],
   );
 
   /* non-passive wheel zoom */
@@ -173,12 +202,49 @@ export function LogicCircuitCard() {
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {/* segment selector */}
-        <SegmentSelector
-          activeSegment={activeSegment}
-          onSelect={(seg) => { setSelected(null); setActiveSegment(seg); }}
-          label="Circuit segment selector"
-        />
+        {/* segment selector + live output display */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 space-y-1.5">
+            <p className="text-[10px] font-medium tracking-widest text-muted-foreground">
+              SEGMENT UNDER EDIT
+            </p>
+            <SegmentSelector
+              activeSegment={activeSegment}
+              onSelect={(seg) => { setSelected(null); setActiveSegment(seg); }}
+              label="Circuit segment selector"
+            />
+          </div>
+          <div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-3 py-2">
+            <SevenSegmentSvg
+              outputs={liveOutputs}
+              settings={liveSettings}
+              interactive
+              onSegmentClick={(seg) => { setSelected(null); setActiveSegment(seg); }}
+              className="h-24 w-auto"
+              clickHint="click to view this segment's circuit"
+              title={`Live output — logic levels every segment's ${form.toUpperCase()} circuit drives for input m${currentInput}. Click a segment to view its circuit.`}
+            />
+            <div className="flex flex-col items-start gap-1.5">
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-medium tracking-widest text-muted-foreground">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" aria-hidden />
+                LIVE OUTPUT
+              </span>
+              <span className="font-mono text-[11px] text-muted-foreground">
+                m{currentInput} · {currentInput.toString(2).padStart(inputBits, '0')}
+              </span>
+              <Badge
+                className={cn(
+                  'font-mono text-[11px]',
+                  (values.get('out') ?? 0) === 1
+                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-muted text-muted-foreground',
+                )}
+              >
+                {activeSegment} = {values.get('out') ?? 0}
+              </Badge>
+            </div>
+          </div>
+        </div>
 
         {/* SVG canvas */}
         <CircuitCanvas
@@ -249,8 +315,10 @@ export function LogicCircuitCard() {
             </p>
             <p>
               Input rails are clickable (they toggle the simulator input), gates are draggable, and
-              clicking a gate shows its live inputs and output. The number of levels equals the gate
-              depth: rails → NOT → {form === 'sop' ? 'AND' : 'OR'} → {form === 'sop' ? 'OR' : 'AND'} → segment.
+              clicking a gate shows its live inputs and output. The LIVE OUTPUT panel (top right)
+              shows all eight segments driven simultaneously for the current input — click any
+              segment on it to jump to that segment&apos;s circuit. The number of levels equals the
+              gate depth: rails → NOT → {form === 'sop' ? 'AND' : 'OR'} → {form === 'sop' ? 'OR' : 'AND'} → segment.
             </p>
           </ExplainBlock>
         )}

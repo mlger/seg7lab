@@ -19,6 +19,7 @@ import {
 import { useSimulator } from '@/lib/store';
 import { ownerHeaders } from '@/lib/client-owner';
 import { validateProject, parseFontFile } from '@/logic/project';
+import { DEFAULT_PROJECT_NAME } from '@/logic/decoder';
 import { detectImportFormat } from '@/logic/presets';
 import { downloadText } from '@/utils/download';
 import { buildProjectJson } from '@/utils/exporters';
@@ -565,8 +566,8 @@ export function ProjectManagerCard() {
           >
             <Save className="mr-1.5 h-3.5 w-3.5" aria-hidden /> Download JSON
           </Button>
-          <Button size="sm" variant="outline" onClick={() => { resetProject(); setNameDraft('BCD Decoder (default)'); setCurrentId(null); }}>
-            <RotateCcw className="mr-1.5 h-3.5 w-3.5" aria-hidden /> Reset to default BCD
+          <Button size="sm" variant="outline" onClick={() => { resetProject(); setNameDraft(DEFAULT_PROJECT_NAME); setCurrentId(null); }}>
+            <RotateCcw className="mr-1.5 h-3.5 w-3.5" aria-hidden /> Reset to default
           </Button>
         </div>
 

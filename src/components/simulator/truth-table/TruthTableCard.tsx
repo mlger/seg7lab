@@ -183,7 +183,7 @@ export function TruthTableCard() {
         <TruthTableToolbar />
 
         <div className="max-h-96 overflow-auto rounded-lg border custom-scroll">
-          <Table className="min-w-[720px] border-collapse text-sm">
+          <Table className="min-w-[600px] border-collapse text-sm">
             <TruthTableHeader />
             <TableBody>
               {orderedRows.map((row) =>

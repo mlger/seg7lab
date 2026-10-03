@@ -25,7 +25,6 @@ import {
   type SegmentOutput,
   type TruthTableRow,
 } from '@/types/simulator';
-import { formatHex } from '@/utils/binary';
 import { GlyphPreview } from '../SevenSegmentDisplay';
 
 function cellColor(v: SegmentOutput): string {
@@ -99,12 +98,6 @@ export const TruthRow = memo(function TruthRow({
           {b}
         </TableCell>
       ))}
-      <TableCell className="px-2 py-1 text-center font-mono text-xs tabular-nums">
-        {row.input}
-      </TableCell>
-      <TableCell className="px-2 py-1 text-center font-mono text-xs">
-        {formatHex(row.input)}
-      </TableCell>
       <TableCell className="border-r border-border/70 px-2 py-1 text-center font-mono text-xs">
         {char === null ? '' : char === ' ' ? '␠' : char}
       </TableCell>

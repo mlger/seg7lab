@@ -1,6 +1,6 @@
 /**
  * Truth-table header: the Inputs/Outputs banner row plus the variable-name
- * headers (click to rename inline), Dec/Hex/Char/Preview columns and the
+ * headers (click to rename inline), Char/Preview columns and the
  * clickable segment-output headers (select the shift-target column).
  *
  * Owns the inline variable-name editing state (editingVar / varDraft) locally.
@@ -52,7 +52,7 @@ export function TruthTableHeader() {
     <TableHeader className="sticky top-0 z-10">
       <TableRow className="bg-muted hover:bg-muted">
         <TableHead
-          colSpan={varNames.length + 3}
+          colSpan={varNames.length + 1}
           className="border-r border-border/70 bg-muted px-3 py-1.5 text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground"
         >
           <span className="inline-flex items-center gap-1.5">
@@ -111,8 +111,6 @@ export function TruthTableHeader() {
             )}
           </TableHead>
         ))}
-        <TableHead className="bg-muted/80 px-2 py-1 text-center font-mono text-xs">Dec</TableHead>
-        <TableHead className="bg-muted/80 px-2 py-1 text-center font-mono text-xs">Hex</TableHead>
         <TableHead className="border-r border-border/70 bg-muted/80 px-2 py-1 text-center font-mono text-xs">
           {fontMode ? 'Char' : '·'}
         </TableHead>
