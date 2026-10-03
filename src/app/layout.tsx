@@ -15,15 +15,32 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "7-Segment Logic Simulator — Digital Logic Laboratory",
+  title: "SEG7 Lab — The decoder, decoded.",
   description:
-    "Design, simulate and analyze a BCD/hex 7-segment decoder: editable truth table, Gray-code Karnaugh maps, Quine-McCluskey Boolean minimization, live logic-gate circuits, custom characters and Verilog/PDF/CSV export.",
+    "SEG7 Lab is the digital logic laboratory that turns one truth table into Karnaugh maps, Quine-McCluskey expressions and a live gate-level circuit. Design a BCD/hex 7-segment decoder: editable truth table, Gray-code K-maps, custom characters and Verilog/PDF/CircuitVerse export.",
+  applicationName: "SEG7 Lab",
   keywords: [
-    "7-segment display", "digital logic", "Karnaugh map", "Quine-McCluskey",
-    "truth table", "Boolean algebra", "BCD decoder", "logic gates", "Verilog",
+    "SEG7 Lab", "7-segment display", "digital logic", "Karnaugh map",
+    "Quine-McCluskey", "truth table", "Boolean algebra", "BCD decoder",
+    "logic gates", "Verilog",
   ],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/seg7-mark.svg",
+  },
+  openGraph: {
+    title: "SEG7 Lab — The decoder, decoded.",
+    description:
+      "One truth table → Karnaugh maps → minimal Boolean expressions → a live gate-level circuit → real exports. Every step visible, consistent and explained.",
+    type: "website",
+    siteName: "SEG7 Lab",
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: "SEG7 Lab — the decoder, decoded." }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "SEG7 Lab — The decoder, decoded.",
+    description:
+      "One truth table → K-maps → minimal expressions → live gates → Verilog/PDF export.",
+    images: ["/og.png"],
   },
 };
 

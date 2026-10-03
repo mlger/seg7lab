@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- SEG7 Lab app icon — the lit 8 on a dark bench tile -->
+  <rect width="64" height="64" rx="14" fill="#101014"/>
+  <g transform="translate(10.125 2) scale(0.3125)">
+    <g fill="#34d399">
+      <path d="M34 23 L41 16 L83 16 L90 23 L83 30 L41 30 Z"/>
+      <path d="M34 96 L41 89 L83 89 L90 96 L83 103 L41 103 Z"/>
+      <path d="M34 169 L41 162 L83 162 L90 169 L83 176 L41 176 Z"/>
+      <path d="M29 21 L36 28 L36 84 L29 91 L22 84 L22 28 Z"/>
+      <path d="M95 21 L102 28 L102 84 L95 91 L88 84 L88 28 Z"/>
+      <path d="M29 101 L36 108 L36 164 L29 171 L22 164 L22 108 Z"/>
+      <path d="M95 101 L102 108 L102 164 L95 171 L88 164 L88 108 Z"/>
+    </g>
+    <circle cx="110" cy="170" r="8" fill="#fbbf24"/>
+  </g>
+</svg>

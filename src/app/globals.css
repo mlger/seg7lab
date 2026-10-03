@@ -37,6 +37,11 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /* SEG7 Lab brand accents — see the contract comment below :root */
+  --color-brand-signal: var(--brand-signal);
+  --color-brand-learn: var(--brand-learn);
+  --color-brand-fault: var(--brand-fault);
+  --color-brand-net: var(--brand-net);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -76,6 +81,25 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* ---------------------------------------------------------------- */
+  /* SEG7 Lab brand accents (Datasheet / light)                        */
+  /* Phosphor heritage: real segment displays glow green or amber.    */
+  /* These formalize the accents already used across the app — same    */
+  /* emerald/amber/rose/purple palette, now a documented contract.     */
+  /*                                                                   */
+  /*   signal — live/true/lit   (valid checks, active values, pass)     */
+  /*   learn  — explain/changed (explain mode, viewport, warnings, DP)  */
+  /*   fault  — errors, destructive, uncovered minterms                */
+  /*   net    — circuit structures, canonical Σm forms, K-map groups   */
+  /*                                                                   */
+  /* Voice contract: precise but warm; honest states over happy        */
+  /* states; machine values always in a mono font. No indigo/blue.     */
+  /* ---------------------------------------------------------------- */
+  --brand-signal: oklch(59.6% 0.145 163.225); /* emerald-600 */
+  --brand-learn: oklch(66.6% 0.179 58.318);   /* amber-600   */
+  --brand-fault: oklch(58.6% 0.253 17.585);   /* rose-600    */
+  --brand-net: oklch(55.8% 0.288 302.321);    /* purple-600  */
 }
 
 .dark {
@@ -110,6 +134,12 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* SEG7 Lab brand accents (Bench / dark) — the lit display palette */
+  --brand-signal: oklch(76.5% 0.177 163.223); /* emerald-400 */
+  --brand-learn: oklch(82.8% 0.189 84.429);   /* amber-400   */
+  --brand-fault: oklch(71.2% 0.194 13.428);   /* rose-400    */
+  --brand-net: oklch(71.4% 0.203 305.504);    /* purple-400  */
 }
 
 @layer base {
@@ -143,6 +173,14 @@
 }
 .custom-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(128, 128, 128, 0.55);
+}
+
+/* LED phosphor glow for SEG7 Lab brand marks (applied to SVG groups) */
+.seg-glow {
+  filter: drop-shadow(0 0 4px color-mix(in oklab, var(--brand-signal) 55%, transparent));
+}
+.seg-glow-dot {
+  filter: drop-shadow(0 0 4px color-mix(in oklab, var(--brand-learn) 55%, transparent));
 }
 
 /* animated energy flow on active logic-1 wires */

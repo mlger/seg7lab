@@ -5,12 +5,13 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Cpu, BookOpen, AlertTriangle, Moon, Sun, Info, LayoutTemplate } from 'lucide-react';
+import { BookOpen, AlertTriangle, Moon, Sun, Info, LayoutTemplate } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useSimulator } from '@/lib/store';
 import { useEngines, usePresetModified, useAppliedTablePreset } from '@/lib/useEngine';
 import { ExportMenu } from './ExportMenu';
 import { PresetGalleryDialog } from './PresetGalleryDialog';
+import { Seg7Mark } from './brand/BrandMark';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
@@ -82,15 +83,15 @@ export function AppHeader({ displaySvgRef }: { displaySvgRef: React.RefObject<SV
     <TooltipProvider delayDuration={200}>
       <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
-          {/* brand */}
+          {/* brand — the lit 8 + wordmark; the amber period is the decimal point */}
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Cpu className="h-5 w-5" aria-hidden />
-            </div>
+            <Seg7Mark className="h-9 w-auto shrink-0" />
             <div className="leading-tight">
-              <h1 className="text-sm font-bold tracking-wide sm:text-base">7-SEGMENT LOGIC SIMULATOR</h1>
+              <h1 className="text-sm font-bold tracking-wide sm:text-base">
+                SEG7 LAB<span className="text-brand-learn" aria-hidden="true">.</span>
+              </h1>
               <p className="hidden text-[10px] text-muted-foreground sm:block">
-                Digital Logic Laboratory · decoder design · K-map solver
+                The decoder, decoded. · truth table → K-maps → gates
               </p>
             </div>
           </div>
@@ -98,7 +99,7 @@ export function AppHeader({ displaySvgRef }: { displaySvgRef: React.RefObject<SV
           <div className="ml-auto flex flex-wrap items-center gap-2 sm:gap-3">
             {/* explain mode */}
             <div className="flex items-center gap-1.5">
-              <BookOpen className={cn('h-4 w-4', explainMode ? 'text-amber-500' : 'text-muted-foreground')} aria-hidden />
+              <BookOpen className={cn('h-4 w-4', explainMode ? 'text-brand-learn' : 'text-muted-foreground')} aria-hidden />
               <Label htmlFor="explain-mode" className="hidden text-xs text-muted-foreground sm:block">Explain</Label>
               <Switch
                 id="explain-mode"
@@ -125,7 +126,7 @@ export function AppHeader({ displaySvgRef }: { displaySvgRef: React.RefObject<SV
                     Engineering checks
                   </h4>
                   {issues.length === 0 && (
-                    <p className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
+                    <p className="flex items-center gap-2 text-xs text-brand-signal">
                       <Info className="h-3.5 w-3.5" aria-hidden />
                       All checks pass — covers complete, truth table valid.
                     </p>
@@ -184,25 +185,34 @@ export function AppHeader({ displaySvgRef }: { displaySvgRef: React.RefObject<SV
 
             <PresetGalleryDialog open={galleryOpen} onOpenChange={setGalleryOpen} />
 
-            {/* theme — both icons render identically on server and client; visibility is
-                driven purely by the .dark class that next-themes applies before hydration,
-                so no localStorage-dependent branch exists during render (no hydration mismatch). */}
-            <Button
-              variant="outline"
-              size="sm"
-              className="relative h-8 w-8 p-0"
-              onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-              aria-label="Toggle color theme"
-            >
-              <Sun
-                className="h-4 w-4 -rotate-90 scale-0 transition-transform duration-200 motion-reduce:transition-none dark:rotate-0 dark:scale-100"
-                aria-hidden
-              />
-              <Moon
-                className="absolute h-4 w-4 rotate-0 scale-100 transition-transform duration-200 motion-reduce:transition-none dark:rotate-90 dark:scale-0"
-                aria-hidden
-              />
-            </Button>
+            {/* theme — Bench (dark) / Datasheet (light), named for the lab at night
+                and the print-ready paper. Both icons render identically on server and
+                client; visibility is driven purely by the .dark class that next-themes
+                applies before hydration, so no localStorage-dependent branch exists
+                during render (no hydration mismatch). */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="relative h-8 w-8 p-0"
+                  onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+                  aria-label="Toggle theme (Bench dark / Datasheet light)"
+                >
+                  <Sun
+                    className="h-4 w-4 -rotate-90 scale-0 transition-transform duration-200 motion-reduce:transition-none dark:rotate-0 dark:scale-100"
+                    aria-hidden
+                  />
+                  <Moon
+                    className="absolute h-4 w-4 rotate-0 scale-100 transition-transform duration-200 motion-reduce:transition-none dark:rotate-90 dark:scale-0"
+                    aria-hidden
+                  />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">
+                <p>{resolvedTheme === 'light' ? 'Bench' : 'Datasheet'} — toggle the lab lights</p>
+              </TooltipContent>
+            </Tooltip>
           </div>
 
           {/* mode controls row */}

@@ -1,5 +1,5 @@
 /**
- * 7-Segment Display Logic Simulator — application shell.
+ * SEG7 Lab — application shell (7-segment display logic simulator).
  *
  * Dashboard layout: display + input controls on the left, analytical panels
  * (truth table, K-map, expressions, circuit, characters, projects) in tabs on
@@ -8,9 +8,10 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { Table2, Grid3x3, Sigma, CircuitBoard, Shapes, FolderOpen, Cpu } from 'lucide-react';
+import { Table2, Grid3x3, Sigma, CircuitBoard, Shapes, FolderOpen } from 'lucide-react';
 import { useSimulator, attachPersistence } from '@/lib/store';
 import { AppHeader } from '@/components/simulator/AppHeader';
+import { Seg7Mark } from '@/components/simulator/brand/BrandMark';
 import { DisplayCard } from '@/components/simulator/DisplayCard';
 import { InputControlsCard } from '@/components/simulator/InputControlsCard';
 import { TruthTableCard } from '@/components/simulator/truth-table';
@@ -95,8 +96,8 @@ export default function Home() {
       <footer className="mt-auto border-t bg-muted/40 pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-[11px] text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <Cpu className="h-3.5 w-3.5" aria-hidden />
-            7-Segment Logic Simulator
+            <Seg7Mark className="h-4 w-auto shrink-0" glow={false} />
+            SEG7 Lab — the decoder, decoded.
           </span>
           <span className="hidden sm:inline">
             truth table → Karnaugh maps → Quine-McCluskey minimization → gate-level simulation
