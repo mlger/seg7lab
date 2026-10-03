@@ -502,3 +502,18 @@ Stage Summary:
 - The P0-P3 roadmap is now COMPLETE end-to-end. All four confirmed bugs fixed and regression-guarded; API + client hardened (server validation, ownership, optimistic locking, corrupt flags, focus/storage sync, offline push-up); all five P2 performance issues resolved; P3 delivered in full (error boundary, confirmations, busy-gating, keyboard a11y, K-map grid semantics, reduced-motion, palette/validation dedup, 15 dead exports purged, strict TS + strict mode on, 283-check verification script, both giant components split to ≤252-line modules with pure netlist extraction, tab-state preservation).
 - Quality gates: lint 0, tsc 0 repo-wide, 283 + 30,893 automated checks green, full browser E2E green, zero console errors.
 - Deliberate deferrals (documented): offline-DELETE tombstones (needs localStorage format change), sonner dep kept (platform template), db push instead of migrations (sandbox project), font-Select virtualization (400 items tolerable).
+
+---
+Task ID: 7
+Agent: main (Z.ai Code — orchestrator)
+Task: PLAN ONLY (user: "dont implement yet") — rework CircuitVerse export to use circuitverse.org Combinational-Analysis-style organized wiring
+
+Work Log:
+- Read our full export builder: src/logic/circuitverse.ts (688 lines) — layout constants (inputs vertical column x=100 facing RIGHT, inverters x=220, AND col x=400, OR col x=520 w/ buildOrTree, display x=620, per-segment bands) + connect() single-bend routing (horizontal run at SOURCE y + vertical drop at SINK x → collinear overlaps = the "wires not organized" complaint).
+- Fetched CircuitVerse's own generator: simulator/src/combinationalAnalysis.js (468 lines, raw.githubusercontent.com) and analyzed drawCombinationalAnalysis() in depth.
+- Derived their exact layout rules: inputs horizontal row at TOP facing DOWN (40px pitch) → per-input v1/v2 bends → NOT gates facing DOWN (+20x,+40y) → TRUE rail at x_i / COMPLEMENT rail at x_i+20 (vertical); shared '_C_' ConstantVal '1' (+ its NOT) whose rails encode constant-0/1 outputs as all-dash terms ('----0' taps NOT(_C_), '----1' taps _C_); single AND column (multi-literal terms; single-literal terms = bare type-2 substitute nodes, NO gate); per-output SINGLE wide OrGate with symmetric fan corridor (verticals at andPosX+30+10k, pairs outside-in, middle direct); Output elements at orPosX+60; growing-rail tap routing (bend at (railX, sinkY), rail tail advances → monotonic disjoint verticals, horizontal runs only in gate rows); all rail tails terminated at common bottom line; strictly increasing currentPosY (+= literals*10+30 per term).
+- Audited impact: verify-circuitverse.ts pins (orGates tree→single, constants, intermediates, wires) will intentionally change; we must add a new Output module type + DOWN-facing Input/NotGate variants to the .cv emitter; our Term/literal model maps directly onto their rail indexing (2*varIndex + complemented). 
+- No code changes made. Plan delivered in chat for user approval.
+
+Stage Summary:
+- Plan ready: CA-faithful layout replication (Phase 0 ground-truth fixture capture from circuitverse.org → rail-tap routing primitive → CA layout w/ shared _C_ constant + single OR per segment + Output pins → optional SevenSegDisplay via fan corridor → stats/dialog updates → verification incl. real circuitverse.org import test). Key open decisions for user: (1) replace vs dual layout (rec: replace), (2) keep SevenSegDisplay via corridor (rec: yes), (3) adopt shared _C_ constant mechanism (rec: yes), (4) 32-input OR cap for direct 5-bit (fallback 2-tier).
