@@ -12,7 +12,8 @@
  *    logic depth fade out (propagation step-through);
  *  - nodeAccents: per-node accent ring (K-map cover group colors on term
  *    gates) + tooltip;
- *  - bandLines: dashed per-segment band separators + labels (decoder mode);
+ *  - bandLines: dashed per-segment band separators + labels, each a focusable
+ *    click target that jumps the viewport to its band (decoder mode);
  *  - expanded: fullscreen variant (svg fills the viewport).
  */
 'use client';
@@ -32,6 +33,8 @@ export interface NodeAccent {
 export interface BandLine {
   y: number;
   label: string;
+  /** Segment the band belongs to — the jump target when clicked. */
+  seg: SegmentName;
 }
 
 interface CircuitCanvasProps {
@@ -55,6 +58,10 @@ interface CircuitCanvasProps {
   nodeAccents?: Map<string, NodeAccent> | null;
   /** Decoder-mode band separators. */
   bandLines?: BandLine[] | null;
+  /** Decoder mode: decoder-aware accessible name for the canvas. */
+  decoderMode?: boolean;
+  /** Jump the viewport to a band (shared by chips, stepper, labels, keys). */
+  onBandJump?: (seg: SegmentName) => void;
   /** Fullscreen variant. */
   expanded?: boolean;
   /** Background/pan start (only fires for the svg/circuit-bg target). */
@@ -72,7 +79,7 @@ interface CircuitCanvasProps {
 
 export function CircuitCanvas({
   svgRef, circuit, values, pos, selected, activeSegment, form, zoom, pan,
-  cone, levels, revealLevel, nodeAccents, bandLines, expanded,
+  cone, levels, revealLevel, nodeAccents, bandLines, decoderMode, onBandJump, expanded,
   onCanvasPointerDown, onPointerMove, onPointerUp, onPointerLeave,
   onNodePointerDown, onNodeActivate, onCanvasKeyDown,
 }: CircuitCanvasProps) {
@@ -96,7 +103,9 @@ export function CircuitCanvas({
         viewBox={`0 0 ${circuit.width} ${circuit.height}`}
         className={cn('block w-full touch-none', expanded ? 'h-full' : 'h-[400px]')}
         role="img"
-        aria-label={`Logic circuit for segment ${activeSegment}, ${form.toUpperCase()} form. Arrow keys pan, plus and minus zoom, 0 fits the view.`}
+        aria-label={decoderMode
+          ? `Full decoder — all eight segment circuits, ${form.toUpperCase()} form. Arrow keys pan, plus and minus zoom, 0 fits the view, Page Up and Page Down jump between segment bands.`
+          : `Logic circuit for segment ${activeSegment}, ${form.toUpperCase()} form. Arrow keys pan, plus and minus zoom, 0 fits the view.`}
         tabIndex={0}
         onPointerDown={onCanvasPointerDown}
         onPointerMove={onPointerMove}
@@ -106,16 +115,40 @@ export function CircuitCanvas({
       >
         <rect className="circuit-bg" x={0} y={0} width={circuit.width} height={circuit.height} fill="transparent" />
         <g transform={`translate(${pan.x},${pan.y}) scale(${zoom})`}>
-          {/* decoder band separators */}
+          {/* decoder band separators — clickable jump targets */}
           {bandLines?.map((b) => (
-            <g key={b.label} aria-hidden>
+            <g
+              key={b.label}
+              className="group cursor-pointer"
+              tabIndex={0}
+              role="button"
+              aria-label={`Jump to ${b.label.toLowerCase()} band`}
+              onClick={(e) => { e.stopPropagation(); onBandJump?.(b.seg); }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onBandJump?.(b.seg);
+                }
+              }}
+            >
+              <rect
+                x={8} y={b.y - 34} width={circuit.width - 16} height={32} rx={6}
+                fill="rgba(0,0,0,0)" className="group-hover:fill-amber-500/10"
+              />
               <line
                 x1={8} y1={b.y - 14} x2={circuit.width - 8} y2={b.y - 14}
                 stroke="rgba(128,128,128,0.35)" strokeWidth={1} strokeDasharray="6 5"
+                className="group-hover:stroke-amber-500/70"
               />
-              <text x={12} y={b.y - 20} className="fill-muted-foreground font-mono text-[11px] font-bold tracking-widest">
+              <text
+                x={12} y={b.y - 20}
+                className="fill-muted-foreground font-mono text-[11px] font-bold tracking-widest group-hover:fill-amber-500"
+              >
                 {b.label}
               </text>
+              <title>{`Jump to ${b.label.toLowerCase()} — fits that band in the viewport`}</title>
             </g>
           ))}
 

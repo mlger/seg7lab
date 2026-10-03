@@ -663,3 +663,36 @@ Stage Summary:
   * P-C Natural feel: C1 cursor-anchored wheel zoom; C2 keyboard completeness (PageUp/Down band jump, Home/End, 1-8 direct band); C3 fullscreen parity (band stepper + TRACE in overlay toolbar); C4 inspector scrollIntoView on selection; C5 no focus stealing on chip clicks.
   * P-D Gate: dedicated agent-browser E2E (chip jump keeps zoom sane + pan changes; band label click; PageDown; wheel anchor math; fullscreen parity; segment-mode regression), lint 0 / tsc 0 / verify:logic 283 / verify-circuitverse 64,205 (circuitverse.ts + netlist builders untouched — viewport math only).
 - Decision points presented to user: chip single-vs-double click semantics (rec: click = center band, dbl = open segment alone), minimap style (rec: 1D rail), jump zoom cap (rec: 1.1).
+---
+Task ID: 12
+Agent: main (Z.ai Code)
+Task: Implement Circuit tab navigation fixes (user: "proceed" on the Task-11 plan — Phases A-D, all decision points as recommended: chip click = center band / dblclick = open alone, 1D chip rail, jump zoom cap 1.1)
+
+Work Log:
+- LogicCircuitCard.tsx rework (viewport math only; netlist builders untouched):
+  * New fitRect(bounds, {maxZoom, center}) — generalized fit (centered by default, top-left pin for fit-to-content); fitView now delegates to it (behavior identical).
+  * New zoomAt(clientX, clientY, z2) anchor math + zoomStep (center-anchored +/- buttons & keys) + resetZoom (100% readout click); zoomRef mirror keeps the wheel handler subscription-stable.
+  * Wheel zoom is now cursor-anchored (content no longer swims); E2E-verified mathematically exact (graph point (690, 6930) fixed through a 1→1.12 zoom).
+  * A1 fit-key fix: key drops activeSegment in decoder mode — segment switches no longer trigger the destructive whole-decoder refit.
+  * jumpToBand (band bounds, BAND_JUMP_MAX_ZOOM=1.1) + unified selectSegment (chips/SegmentSelector/LIVE OUTPUT/keyboard) + stepBand stepper + centerBandIdx viewport indicator (ResizeObserver-fed canvasDims state, reactive to pan/zoom/resize).
+  * Band chips are now real <button>s: click = jump to band, double-click = open segment alone, amber ring + dot = band under viewport (aria-current=location), titles/aria-labels honest.
+  * Keyboard: PageUp/PageDown band step, Home/End first/last band, 1-8 direct band jump (decoder mode); hint line + explain text updated.
+  * Fullscreen overlay toolbar parity: band stepper + live band letter + zoom in/out/% /fit/TRACE toggle + level stepper + exit; floating GateInspector bottom-left when a gate is selected (fullscreen inspection was previously impossible).
+  * Inspector scrollIntoView('nearest', reduced-motion-aware) on gate selection.
+- CircuitCanvas.tsx: band separators are now focusable role=button jump targets (32-unit hit rect inside the 36-unit inter-band gap — covers no gates), hover amber styling, keyboard Enter/Space, stopPropagation so clicks don't start pan drags; new onBandJump + decoderMode props; decoder-aware svg aria-label.
+- Quality gates: lint 0 · tsc 0 · verify:logic 283/283 · verify-circuitverse 64,205/64,205.
+- Browser E2E (dedicated session 'e2e-nav', BCD preset):
+  * N1/N2 regression FIXED: decoder zoomed to 0.356 → chip E click → zoom 0.938 (band-fit < 1.1 cap), panY 676 → −65 (real jump), indicator ring on E. Old behavior was zoom reset to 0.206 + zero navigation.
+  * Canonical Σm decoder (920×7736): auto-fit 0.1 thumbnail → chip G → zoom 0.386, panY 3655 → 1148 — whole band visible & readable-ish.
+  * Stepper E→F ✓; keyboard PageDown→G, 8→DP, Home→A ✓; canvas "SEGMENT C" label click → band C ✓ (all 8 labels role=button).
+  * Zoom % readout 36% ✓, click resets to 100% ✓; wheel cursor-anchor exact ✓.
+  * Fullscreen: toolbar shows stepper + % + TRACE + level stepper + exit ✓; keyboard-select gate → floating inspector with live values ✓; Esc exits ✓.
+  * Segment-mode regression: selector B switch → auto-fit refit (canonical B 0.330) + segment aria-label ✓.
+  * Inspector scrollIntoView: bottom edge exactly at viewport bottom (scrollY 484) ✓.
+  * Mobile 390px: zero horizontal overflow (scrollWidth 390 = clientWidth), decoder chip rail wraps ✓.
+  * Zero page errors; console clean (only benign React DevTools info + HMR). Session closed, temp screenshots removed, state reset (SOP · segment A) for the user.
+
+Stage Summary:
+- All 9 audited navigation defects (N1-N7 + polish) fixed and browser-proven. Circuit tab navigation is now: chip/label/keyboard/stepper jumps that center bands at readable zoom, viewport-position indicator, honest tooltips/aria, cursor-anchored wheel zoom, zoom readout, fullscreen parity incl. floating inspector, inspector auto-scroll.
+- Changed files: src/components/simulator/logic-circuit/LogicCircuitCard.tsx, src/components/simulator/logic-circuit/CircuitCanvas.tsx. NOTHING else — circuitNetlist.ts, decoderCircuit.ts, circuitverse.ts, exporters, store untouched (all verify pins green).
+- Key invariants held: buildCircuit semantics unchanged, fit-to-content behavior identical (fitView delegates with center:false), decoder netlist identical (only viewport math + UI changed).
