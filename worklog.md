@@ -747,3 +747,25 @@ Stage Summary:
 - Deploy blocker fixed at the root: OpenNext + wrangler config now committed with the self-reference binding correctly named after the actual Worker (seg7lab), deps pinned in devDependencies, lockfile consistent, auto-migration disabled by the presence of a real wrangler.jsonc.
 - Changed files: NEW wrangler.jsonc, NEW open-next.config.ts, NEW public/_headers, package.json (scripts + devDeps + bun.lock), .gitignore. App code, logic, exports, store: UNTOUCHED (both verify pins green).
 - Open follow-up (needs user decision): migrate Prisma SQLite → Cloudflare D1 (driver adapters + d1 binding + migrations) or Turso/libSQL if server-side preset/project persistence is wanted on Workers.
+---
+Task ID: 15
+Agent: main (Z.ai Code)
+Task: Connect the project to the user's updated GitHub repo (https://github.com/mlger/seg7lab.git) and sync it with all local fixes (Tasks 11-14).
+
+Work Log:
+- Audited local git state: repo already existed on branch main with platform auto-commits (UUID messages), no remote, everything through Task 14 committed. Only .zscripts/dev.pid dirty (untracked later).
+- Tracked-file inventory found sandbox internals in git: .env (path-only DATABASE_URL — no secrets, verified by secret sweep: no PATs/tokens anywhere in tracked files), .zscripts/, agent-ctx/ (9), tool-results/ (43), upload/ (7), tests/ (3), examples/ (2), mini-services/ (1), download/ (1), Caddyfile, db/custom.db (45KB).
+- Repo hygiene commit: git rm -r --cached all sandbox internals (files kept on disk), .gitignore extended (/.zscripts, /agent-ctx, /tool-results, /upload, /download, /tests, /examples, /mini-services, /Caddyfile, /db/*.db), .env untracked, NEW .env.example (DATABASE_URL=file:./db/custom.db) + db/.gitkeep added.
+- package.json + bun.lock root name: nextjs_tailwind_shadcn_ts → seg7lab (bun install --frozen-lockfile verified before AND after — passes; bun doesn't rewrite the lockfile root name itself, sed'd it and re-verified frozen install).
+- layout.tsx: metadataBase now resolves from NEXT_PUBLIC_SITE_URL env (try/catch guarded) — fixes absolute OG/Twitter image URLs on the deployed domain (scrapers can't reach the localhost fallback); unset locally = current behavior.
+- Gates after changes: lint 0 · tsc 0 · verify:logic 283/283 · verify-circuitverse 64,205/64,205; dev server healthy.
+- Connected remote (PAT embedded in origin URL per user), fetched: remote main = 2 commits ("Initial commit", "Add SEG7 Lab application") = the user's post-Task-13 export (has BrandMark.tsx + og.png) but PRE-Task-14 (no wrangler.jsonc/open-next.config.ts/_headers, package still nextjs_tailwind_shadcn_ts) — exactly the state that failed on Cloudflare.
+- Remote-only files: sandbox internals (deliberately untracked) + LICENSE (Apache-2.0) — LICENSE restored into local tree and committed (preserved).
+- Push: force push main (unrelated histories; local = authoritative superset) → then .env.example caught by .env* ignore pattern → gitignore ordering fixed (exception AFTER pattern; gitignore takes the last match) → follow-up commits pushed normally.
+- Final verification: remote HEAD == local HEAD (df94dd5), zero diff, .env.example/LICENSE/wrangler.jsonc/open-next.config.ts/_headers/og.png/seg7-mark.svg/BrandMark.tsx all present on remote; remote tree is app-only (114 src + public + scripts + configs + prisma + LICENSE + .env.example, 130→~135 files, no sandbox junk). Remote package name seg7lab + deploy script confirmed.
+- Browser sanity (dedicated session): app renders (SEG7 LAB. lockup, 24 svg paths, 22 tabs), zero console/page errors.
+
+Stage Summary:
+- Repo mlger/seg7lab connected (origin, PAT auth) and fully synced: remote main now carries ALL work — logic simulator (Tasks 1-10), circuit navigation fixes (11-12), SEG7 Lab branding P1-P2 (13), Cloudflare deploy fix (14), plus this task's repo hygiene (sandbox internals out of git, package renamed seg7lab, .env.example, Apache-2.0 LICENSE preserved, env-driven metadataBase).
+- User's Cloudflare next steps: ensure Workers Builds deploy command = `bun run deploy` (build `bun run build` optional — deploy script builds itself); optionally set NEXT_PUBLIC_SITE_URL build env var to the final URL for correct OG images; PAT was shared in chat — recommend rotating it after setup.
+- Open follow-ups unchanged: D1/Turso migration if server-side persistence on Workers is wanted; branding P3-P4.
