@@ -56,3 +56,21 @@ server.log
 .open-next
 .wrangler
 .dev.vars
+
+# --- SEG7 Lab repo hygiene (sandbox internals stay on disk, out of git) ---
+/.zscripts
+/agent-ctx
+/tool-results
+/upload
+/download
+/tests
+/examples
+/mini-services
+/Caddyfile
+/.dev.vars
+/.open-next
+/.wrangler
+
+# local SQLite dev database (create with `bun run db:push`)
+/db/*.db
+/db/*.db-journal

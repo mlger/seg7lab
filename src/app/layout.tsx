@@ -14,7 +14,24 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+/**
+ * Canonical site URL for absolute Open Graph / Twitter image URLs.
+ * Set NEXT_PUBLIC_SITE_URL (e.g. https://seg7lab.<subdomain>.workers.dev)
+ * as a build environment variable in Cloudflare Workers Builds — without
+ * it Next falls back to localhost, which social scrapers cannot reach.
+ */
+function resolveMetadataBase(): URL | undefined {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  if (!siteUrl) return undefined;
+  try {
+    return new URL(siteUrl);
+  } catch {
+    return undefined;
+  }
+}
+
 export const metadata: Metadata = {
+  metadataBase: resolveMetadataBase(),
   title: "SEG7 Lab — The decoder, decoded.",
   description:
     "SEG7 Lab is the digital logic laboratory that turns one truth table into Karnaugh maps, Quine-McCluskey expressions and a live gate-level circuit. Design a BCD/hex 7-segment decoder: editable truth table, Gray-code K-maps, custom characters and Verilog/PDF/CircuitVerse export.",
