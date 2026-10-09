@@ -22,6 +22,7 @@ import type {
   SegmentPatternX,
   TruthTable,
 } from '@/types/simulator';
+import type { GateStyle } from '@/logic/circuitNetlist';
 
 export interface SimulatorState {
   /* ---- project data (persisted) ---- */
@@ -55,6 +56,10 @@ export interface SimulatorState {
   explainMode: boolean;
   activeSegment: SegmentName;
   expressionForm: ExpressionForm;
+  /** Gate implementation style of the circuit view (and of exports that
+   *  follow it — the Falstad export). Lifted from LogicCircuitCard so the
+   *  export menu can read it; session state like expressionForm. */
+  circuitStyle: GateStyle;
   kmapShowMinterms: boolean;
   hydrated: boolean;
   lastAction: string | null;
@@ -130,6 +135,7 @@ export interface SimulatorState {
   setExplainMode: (on: boolean) => void;
   setActiveSegment: (segment: SegmentName) => void;
   setExpressionForm: (form: ExpressionForm) => void;
+  setCircuitStyle: (style: GateStyle) => void;
   setKmapShowMinterms: (on: boolean) => void;
 
   /** Toggle a prime group in/out of the active cover (per form). */
@@ -156,6 +162,7 @@ export interface WorkspaceState {
   explainMode: boolean;
   activeSegment: SegmentName;
   expressionForm: ExpressionForm;
+  circuitStyle: GateStyle;
   kmapShowMinterms: boolean;
   hydrated: boolean;
   lastAction: string | null;

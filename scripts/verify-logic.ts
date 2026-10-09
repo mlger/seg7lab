@@ -37,6 +37,7 @@ import { computeNodeLevels } from '@/logic/circuitLayout';
 import { buildFactoredDecoderCircuit } from '@/logic/factoredDecoderCircuit';
 import {
   buildFalstadNetlist, gatePinOffsets, FALSTAD_GATE_TYPE, FALSTAD_GRID,
+  buildFalstadDisplayNetlist,
 } from '@/logic/falstad';
 import {
   STANDARD_PATTERNS, STANDARD_DIGITS, STANDARD_GLYPHS, STANDARD_DIGIT_START,
@@ -2066,11 +2067,373 @@ section('15. falstad export: classic $ text netlist for CircuitJS1');
     check('no wire passes through a gate body',
       through.length === 0, through.slice(0, 3).join(' | '));
   }
+
+  /* --- The COMBINED display export: one file, shared bus, 157 display -- */
+  {
+    // One file holds every segment band, ONE set of shared input switches,
+    // and a real SevenSegElm (157). These checks re-run the whole invariant
+    // set against it — the dangling test extended with the display's eight
+    // derived pin posts — and then SEMANTICALLY evaluate the exported netlist
+    // (parse elements + wires, union-find the nets, propagate values) and
+    // compare the lit segments against the minimized form for every input
+    // combination: the strongest possible statement that the file is not just
+    // well-formed but computes the right digit.
+    for (const bits of [4, 5] as const) {
+      const names = bits === 4 ? vn : ['A', 'B', 'C', 'D', 'E'];
+      const table = presetTable(bits, 'decimal', 'dontcare');
+      const engines = computeEngines(table, {}, {}, names);
+      for (const style of ['basic', 'factored'] as const) {
+        for (const form of ['sop', 'pos'] as const) {
+          for (const canonical of [false, true] as const) {
+          const tag = `${bits}-bit ${form}/${style}${canonical ? ' canonical' : ''}`;
+          const res = buildFalstadDisplayNetlist(engines, bits, names, { form, style, canonical });
+          const lines = res.text.trim().split('\n');
+          const body = lines.slice(1);
+
+          /* -- grammar + the display element itself ------------------- */
+          equal(`${tag}: exactly one 157 display element`,
+            body.filter((l) => l.startsWith('157 ')).length, 1);
+          const dispLine = body.find((l) => l.startsWith('157 '))!;
+          check(`${tag}: the 157 line is the 8-pin (DP) logic display`,
+            /^157 (\d+) (\d+) (\d+) (\d+) 0 7 1 0$/.test(dispLine)
+              && Number(dispLine.split(' ')[3]) === Number(dispLine.split(' ')[1]) + 64
+              && Number(dispLine.split(' ')[4]) === Number(dispLine.split(' ')[2]),
+            dispLine);
+          check(`${tag}: every line is a known element type`,
+            body.every((l) => /^(w|L|M|I|157|150|151|152|153|154|431) /.test(l)),
+            body.find((l) => !/^(w|L|M|I|157|150|151|152|153|154|431) /.test(l)) || '');
+          check(`${tag}: no M output probe (the display replaces it)`,
+            !body.some((l) => l.startsWith('M ')));
+          const badGrid: string[] = [];
+          for (const l of body) {
+            for (const v of l.split(' ').slice(1, 5)) {
+              if (!Number.isInteger(Number(v)) || Number(v) % FALSTAD_GRID !== 0) {
+                badGrid.push(`${l} -> ${v}`);
+                break;
+              }
+            }
+          }
+          check(`${tag}: every coordinate is an integer on the 16px grid`,
+            badGrid.length === 0, badGrid.slice(0, 3).join(' | '));
+
+          /* -- all eight display pins are driven ----------------------- */
+          for (const seg of SEGMENT_NAMES) {
+            check(`${tag}: pin ${seg} is driven and stubbed`,
+              (res.driving[seg] === 'circuit' || res.driving[seg] === 'high' || res.driving[seg] === 'low')
+              && res.wirePoints.has(`${res.display.pins[seg]!.x},${res.display.pins[seg]!.y}`)
+              && res.connectionPoints.has(`${res.display.pins[seg]!.x},${res.display.pins[seg]!.y}`),
+              `${seg}: ${res.driving[seg]}`);
+          }
+          if (!canonical) {
+            equal(`${tag}: DP is the constant-low segment on the decimal table`,
+              res.driving.DP, 'low');
+          } else {
+            equal(`${tag}: canonical mode builds DP's real circuit (no const shortcut)`,
+              res.driving.DP, 'circuit');
+          }
+
+          /* -- the shared input bus -------------------------------------- */
+          // A variable minimized out of EVERY band gets no switch (nothing
+          // references it), so the expected count is the USED variable set.
+          const usedVars = new Set<string>();
+          for (const seg of SEGMENT_NAMES) {
+            const e = engines[seg];
+            const terms = canonical
+              ? (form === 'sop'
+                ? e.ones.map((m) => mintermToTerm(m, bits, names))
+                : e.zeros.map((m) => maxtermToTerm(m, bits, names)))
+              : form === 'sop' ? e.activeSopTerms : e.activePosTerms;
+            if (!canonical
+              && (terms.length === 0 || terms.some((t) => t.literals.length === 0))) {
+              continue; // constant / all-don't-care: no band, no pins
+            }
+            for (const t of terms) for (const lit of t.literals) usedVars.add(lit.name);
+          }
+          const staircase = names.map((_, k) => `${48 + 16 * k},${32 + 64 * k}`);
+          const sharedLs = body.filter((l) =>
+            l.startsWith('L ') && staircase.includes(`${l.split(' ')[1]},${l.split(' ')[2]}`));
+          equal(`${tag}: one shared L per used variable on the staircase`,
+            sharedLs.length, usedVars.size);
+          check(`${tag}: shared switches start LOW and carry the logic voltages`,
+            sharedLs.every((l) => / 0 false 5 0$/.test(l)), sharedLs[0]);
+          // The rail alignment itself (every band's pin for variable k at the
+          // same x = 48+16k) is proven by the SEMANTIC check below: if a rail
+          // missed a pin, that band would compute from an undefined net and
+          // the displayed digit would come out wrong.
+
+          /* -- no dangling endpoints (with the display's 8 pins) --------- */
+          const wireEndCount = new Map<string, number>();
+          const elementPoints = new Set<string>();
+          for (const seg of SEGMENT_NAMES) {
+            const p = res.display.pins[seg]!;
+            elementPoints.add(`${p.x},${p.y}`);
+          }
+          for (const l of body) {
+            const t = l.split(' ');
+            const type = t[0];
+            if (type === 'w') {
+              for (const p of [`${t[1]},${t[2]}`, `${t[3]},${t[4]}`]) {
+                wireEndCount.set(p, (wireEndCount.get(p) ?? 0) + 1);
+              }
+              continue;
+            }
+            const gateType = Number(type);
+            if ((gateType >= 150 && gateType <= 154) || gateType === 431) {
+              elementPoints.add(`${t[3]},${t[4]}`);
+              for (const off of gatePinOffsets(Number(t[6]))) {
+                elementPoints.add(`${t[1]},${Number(t[2]) + off}`);
+              }
+            } else if (type === 'I' || type === '157') {
+              if (type === 'I') elementPoints.add(`${t[1]},${t[2]}`);
+              if (type === 'I') elementPoints.add(`${t[3]},${t[4]}`);
+            } else {
+              elementPoints.add(`${t[1]},${t[2]}`);
+            }
+          }
+          const dangling = [...wireEndCount.keys()].filter((p) => {
+            if (elementPoints.has(p)) return false;
+            return (wireEndCount.get(p) ?? 0) < 2;
+          });
+          check(`${tag}: no wire endpoint dangles`,
+            dangling.length === 0,
+            `${dangling.length} dangling: ${dangling.slice(0, 6).join(' ')}`);
+
+          /* -- no unintended joins / no shorts (union-find) -------------- */
+          const segs = res.segments;
+          const parent = segs.map((_, i) => i);
+          const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+          const union = (i: number, j: number): void => {
+            const a = find(i), b = find(j);
+            if (a !== b) parent[a] = b;
+          };
+          const pointIdx = new Map<string, number[]>();
+          segs.forEach((s, i) => {
+            for (const p of [`${s[0]},${s[1]}`, `${s[2]},${s[3]}`]) {
+              if (!pointIdx.has(p)) pointIdx.set(p, []);
+              pointIdx.get(p)!.push(i);
+            }
+          });
+          for (const group of pointIdx.values()) {
+            for (let k = 1; k < group.length; k++) union(group[0], group[k]);
+          }
+          let endpointOnRun = '';
+          for (let si = 0; si < segs.length && !endpointOnRun; si++) {
+            const s = segs[si];
+            for (const end of [[s[0], s[1]], [s[2], s[3]]]) {
+              for (let oi = 0; oi < segs.length; oi++) {
+                if (oi === si || find(si) === find(oi)) continue;
+                const o = segs[oi];
+                if (end[0] === o[0] && end[1] === o[1]) continue;
+                if (end[0] === o[2] && end[1] === o[3]) continue;
+                const onRun = o[0] === o[2]
+                  ? end[0] === o[0] && end[1] > Math.min(o[1], o[3]) && end[1] < Math.max(o[1], o[3])
+                  : end[1] === o[1] && end[0] > Math.min(o[0], o[2]) && end[0] < Math.max(o[0], o[2]);
+                if (onRun) {
+                  endpointOnRun = `endpoint ${end.join(',')} lies on ${o.join(',')}`;
+                  break;
+                }
+              }
+              if (endpointOnRun) break;
+            }
+          }
+          check(`${tag}: no wire endpoint lands on a foreign run (no unintended join)`,
+            endpointOnRun === '', endpointOnRun);
+          let collinear = '';
+          for (let i = 0; i < segs.length && !collinear; i++) {
+            for (let j = i + 1; j < segs.length; j++) {
+              if (find(i) === find(j)) continue;
+              if (illegalCross(segs[i], segs[j], false) === 'collinear') {
+                collinear = `${segs[i].join(',')} vs ${segs[j].join(',')}`;
+                break;
+              }
+            }
+          }
+          check(`${tag}: no two different nets overlap collinearly (no short)`,
+            collinear === '', collinear);
+
+          /* -- no wire through a gate body or the display body ----------- */
+          // The 157 body at the 32px scale: (x, y-32)…(x+160, y+96), padded.
+          const bodies: [number, number, number, number][] = [
+            [res.display.x + 4, res.display.y - 28, res.display.x + 156, res.display.y + 92],
+          ];
+          for (const l of body) {
+            const t = l.split(' ');
+            const type = Number(t[0]);
+            if (!(type >= 150 && type <= 154 || type === 431)) continue;
+            const x1 = Number(t[1]), y1 = Number(t[2]), x2 = Number(t[3]), y2 = Number(t[4]);
+            const span = Math.floor(Number(t[6]) / 2) * FALSTAD_GRID;
+            bodies.push([x1 + 4, y1 - span, x2 - 4, y2 + span]);
+          }
+          const through: string[] = [];
+          for (const s of segs) {
+            const [x1, y1, x2, y2] = s;
+            for (const [bx1, by1, bx2, by2] of bodies) {
+              if (y1 === y2 && y1 > by1 && y1 < by2
+                && Math.max(x1, x2) > bx1 && Math.min(x1, x2) < bx2) {
+                through.push(`h ${s.join(',')} through body ${bx1},${by1},${bx2},${by2}`);
+              }
+              if (x1 === x2 && x1 > bx1 && x1 < bx2
+                && Math.max(y1, y2) > by1 && Math.min(y1, y2) < by2) {
+                through.push(`v ${s.join(',')} through body ${bx1},${by1},${bx2},${by2}`);
+              }
+            }
+          }
+          check(`${tag}: no wire passes through a gate or display body`,
+            through.length === 0, through.slice(0, 3).join(' | '));
+
+          /* -- SEMANTICS: evaluate the netlist for every input combo ----- */
+          for (let combo = 0; combo < (1 << bits); combo++) {
+            const varLValues = new Map<string, 0 | 1>();
+            names.forEach((v, k) => {
+              varLValues.set(`${48 + 16 * k},${32 + 64 * k}`, (combo >> (names.length - 1 - k) & 1) as 0 | 1);
+            });
+            const shown = evalFalstadDisplay(res.text, varLValues);
+            const expected: Record<string, 0 | 1> = {};
+            for (const seg of SEGMENT_NAMES) {
+              const e = engines[seg];
+              const bit = (name: string): 0 | 1 =>
+                (combo >> (names.length - 1 - names.indexOf(name)) & 1) as 0 | 1;
+              if (canonical) {
+                // Canonical = unminimized: SOP lights exactly the one-minterms,
+                // POS exactly the non-zero-minterms (don't-cares excluded).
+                expected[seg] = (form === 'sop'
+                  ? e.ones.includes(combo)
+                  : !e.zeros.includes(combo)) ? 1 : 0;
+              } else if (form === 'sop') {
+                expected[seg] = e.activeSopTerms.some((t) =>
+                  t.literals.every((lit) => bit(lit.name) === (lit.complemented ? 0 : 1))) ? 1 : 0;
+              } else {
+                expected[seg] = e.activePosTerms.every((t) =>
+                  t.literals.some((lit) => bit(lit.name) === (lit.complemented ? 0 : 1))) ? 1 : 0;
+              }
+            }
+            check(`${tag}: input ${combo.toString(2).padStart(bits, '0')} lights the right segments`,
+              JSON.stringify(shown) === JSON.stringify(expected),
+              `shown ${JSON.stringify(shown)} expected ${JSON.stringify(expected)}`);
+          }
+          }
+        }
+      }
+    }
+
+    /* -- determinism of the combined export --------------------------- */
+    {
+      const a = buildFalstadDisplayNetlist(eng, 4, vn, { form: 'sop', style: 'basic' });
+      const b = buildFalstadDisplayNetlist(eng, 4, vn, { form: 'sop', style: 'basic' });
+      equal('combined display export is byte-identical across runs', a.text, b.text);
+      check('combined display export is non-trivial',
+        a.text.trim().split('\n').length > 100);
+    }
+  }
 }
 
 /** True when the text contains at least one gate element line. */
 function isFalstadLine(text: string): boolean {
   return text.trim().split('\n').some((l) => /^(150|151|152|153|154|431) /.test(l));
+}
+
+/**
+ * Evaluate an exported combined netlist: union-find the nets, propagate the
+ * switch / gate values to a fixpoint, and read the 157 display pins.
+ * `varLValues` overrides switch values keyed by the L's post "x,y" — used to
+ * set the shared staircase switches per input combination.
+ */
+function evalFalstadDisplay(text: string, varLValues: Map<string, 0 | 1>): Record<string, 0 | 1> {
+  const parent = new Map<string, string>();
+  const find = (p: string): string => {
+    if (!parent.has(p)) parent.set(p, p);
+    const r = parent.get(p)!;
+    return r === p ? p : (parent.set(p, find(r)), parent.get(p)!);
+  };
+  const union = (a: string, b: string): void => {
+    const ra = find(a), rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+  interface El {
+    kind: 'L' | 'I' | 'G' | 'D';
+    post?: string; pos?: 0 | 1;
+    in?: string; out?: string;
+    g?: number; pins?: string[];
+    x?: number; y?: number;
+  }
+  const els: El[] = [];
+  for (const l of text.trim().split('\n').slice(1)) {
+    const t = l.split(' ');
+    if (t[0] === 'w') {
+      union(`${t[1]},${t[2]}`, `${t[3]},${t[4]}`);
+    } else if (t[0] === 'L') {
+      els.push({ kind: 'L', post: `${t[1]},${t[2]}`, pos: (Number(t[5]) ? 1 : 0) as 0 | 1 });
+    } else if (t[0] === 'I') {
+      els.push({ kind: 'I', in: `${t[1]},${t[2]}`, out: `${t[3]},${t[4]}` });
+    } else if (t[0] === '157') {
+      els.push({ kind: 'D', x: Number(t[1]), y: Number(t[2]) });
+    } else {
+      const g = Number(t[0]);
+      if ((g >= 150 && g <= 154) || g === 431) {
+        const count = Number(t[6]);
+        const x = Number(t[1]), y = Number(t[2]);
+        els.push({
+          kind: 'G', g,
+          pins: gatePinOffsets(count).map((off) => `${x},${y + off}`),
+          out: `${t[3]},${t[4]}`,
+        });
+      }
+    }
+  }
+  const val = new Map<string, 0 | 1>();
+  const netVal = (p: string): 0 | 1 | undefined => val.get(find(p));
+  const setNet = (p: string, v: 0 | 1): void => {
+    const r = find(p);
+    if (!val.has(r)) val.set(r, v);
+  };
+  for (const el of els) {
+    if (el.kind === 'L' && el.post) {
+      const v = varLValues.get(el.post) ?? el.pos!;
+      setNet(el.post, v);
+    }
+  }
+  const gateOut = (g: number, ins: (0 | 1)[]): 0 | 1 => {
+    const parity = (ins.reduce<number>((a, b) => a ^ b, 0) & 1) as 0 | 1;
+    switch (g) {
+      case 150: return ins.every((v) => v === 1) ? 1 : 0;
+      case 151: return ins.every((v) => v === 1) ? 0 : 1;
+      case 152: return ins.some((v) => v === 1) ? 1 : 0;
+      case 153: return ins.some((v) => v === 1) ? 0 : 1;
+      case 154: return parity;
+      default: return (parity ^ 1) as 0 | 1; // 431 XNOR
+    }
+  };
+  for (let pass = 0; pass < els.length + 2; pass++) {
+    let changed = false;
+    for (const el of els) {
+      if (el.kind === 'I' && el.in && el.out) {
+        const v = netVal(el.in);
+        if (v !== undefined && netVal(el.out) === undefined) {
+          setNet(el.out, v ? 0 : 1);
+          changed = true;
+        }
+      } else if (el.kind === 'G' && el.pins && el.out) {
+        const ins = el.pins.map(netVal);
+        if (ins.every((v) => v !== undefined) && netVal(el.out) === undefined) {
+          setNet(el.out, gateOut(el.g!, ins as (0 | 1)[]));
+          changed = true;
+        }
+      }
+    }
+    if (!changed) break;
+  }
+  const out: Record<string, 0 | 1> = {};
+  const disp = els.find((e) => e.kind === 'D');
+  if (disp && disp.x !== undefined && disp.y !== undefined) {
+    // Pin layout as probed from the live app: west (x, y+32·i), east (x+192, y+32·k).
+    (['A', 'B', 'C', 'D'] as const).forEach((seg, i) => {
+      out[seg] = netVal(`${disp.x},${disp.y! + 32 * i}`) ?? 0;
+    });
+    (['E', 'F', 'G', 'DP'] as const).forEach((seg, k) => {
+      out[seg] = netVal(`${disp.x! + 192},${disp.y! + 32 * k}`) ?? 0;
+    });
+  }
+  return out;
 }
 
 /**

@@ -28,7 +28,7 @@ Goals of v1:
 Non-goals of v1 — these are limitations, not future promises:
 
 - **Layering is not a win on the shipped example.** Multi-level factoring measures net-NEGATIVE on the built-in BCD table: better in 1 of 15 segment × form cases, worse in 7. Quine-McCluskey already flattens these covers, so factoring mostly adds depth. The UI states this plainly instead of implying an improvement.
-- **The Falstad export is incomplete.** It draws the decoder logic plus a logic-output probe. It does NOT emit the seven-segment display element, and it does not yet follow the on-screen style chips.
+- **The Falstad export is incomplete.** It draws the decoder logic plus a logic-output probe. It does NOT emit the seven-segment display element, and it does not yet follow the on-screen style chips. *(RESOLVED 2026-10-09: the export is now ONE combined file — all decoders, one shared input bus, a real SevenSegElm (157) — and it follows the on-screen form and gate style, canonical forms included.)*
 - **Verilog and CircuitVerse exports stay two-level SOP** even when the tab shows Layered or Universal.
 - **Zero cross-segment sharing** on the BCD table in the full-decoder Layered view.
 - **No timing or hazard analysis.** No gate delays, no static/dynamic hazard reporting.
@@ -230,7 +230,7 @@ Falsifiable, and each one tied to an automated or reproducible check:
 Derived from the v1 limitations, in rough order of user impact:
 
 - **Does multi-level factoring ever pay off here, and how should that be presented?** Measured net-negative on the shipped BCD table (better in 1 of 15 segment × form cases, worse in 7). Options: keep the style with the honest verdict, restrict it to tables where it wins, or replace the factoring algorithm. Unresolved.
-- **Falstad export completeness.** Emitting the seven-segment display element, and making the export follow the on-screen style chips rather than always emitting the current two-level form.
+- **Falstad export completeness.** ~~Emitting the seven-segment display element, and making the export follow the on-screen style chips.~~ RESOLVED: one combined file with shared switches + a real display, following the on-screen form/style.
 - **Export fidelity for non-two-level styles.** Verilog and CircuitVerse currently stay two-level SOP even when Layered or Universal is displayed. Either the exports must follow the tab, or the UI must state the mismatch at export time.
 - **Cross-segment sharing.** The BCD table yields zero sharing in the full-decoder Layered view; whether that is a property of the table, of the factoring algorithm, or of both, is unknown.
 - **Timing and hazards.** Not analysed at all: gate delays, static and dynamic hazards, and whether the schematic should annotate them.

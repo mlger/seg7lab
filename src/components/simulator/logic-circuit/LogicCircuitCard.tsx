@@ -96,6 +96,10 @@ export function LogicCircuitCard() {
   const setActiveSegment = useSimulator((s) => s.setActiveSegment);
   const expressionForm = useSimulator((s) => s.expressionForm);
   const setExpressionForm = useSimulator((s) => s.setExpressionForm);
+  // Gate style lives in the store (session state, like expressionForm) so the
+  // Falstad export can follow the circuit the user is looking at.
+  const styleChoice = useSimulator((s) => s.circuitStyle);
+  const setStyleChoice = useSimulator((s) => s.setCircuitStyle);
   const currentInput = useSimulator((s) => s.currentInput);
   const inputBits = useSimulator((s) => s.inputBits);
   const toggleBit = useSimulator((s) => s.toggleBit);
@@ -132,8 +136,6 @@ export function LogicCircuitCard() {
   /* ---------------------- view state (local) ---------------------- */
   const [mode, setMode] = useState<'segment' | 'decoder'>('segment');
   const [expanded, setExpanded] = useState(false);
-  /** Gate implementation style: basic AND/OR or the De Morgan universal dual. */
-  const [styleChoice, setStyleChoice] = useState<GateStyle>('basic');
 
   /**
    * Multi-level factoring works for the minimized SOP and POS covers. Canonical

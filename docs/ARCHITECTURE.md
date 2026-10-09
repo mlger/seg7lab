@@ -26,7 +26,7 @@ scope for custom architecture.
 
 ```text
 src/
-  logic/                    DOMAIN + APPLICATION — pure, 592+64k checks pin it
+  logic/                    DOMAIN + APPLICATION — pure, 1298+64k checks pin it
     truthTable.ts             truth-table CRUD (the source of truth)
     minimizer.ts              Quine-McCluskey with exact cover + honest budget flag
     kmap.ts, expressions.ts   derived views (K-map groups, 4-notation formatter)
@@ -209,7 +209,7 @@ Two mechanisms, same rules ([ADR-0006](./decisions/0006-boundary-enforcement.md)
 `src/logic/project.ts` (E-code for each rule); 2) nothing in the service
 changes (it stores canonical blobs); 3) add the field to
 `SimulatorState`/`toProjectData` in `src/lib/store/`; 4) render it in the
-card that owns it. The 592-check suite + API characterization protect the
+card that owns it. The 1298-check suite + API characterization protect the
 rest.
 
 **Add a REST resource:** copy the `src/server/presets/` trio (repository
