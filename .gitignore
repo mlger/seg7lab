@@ -53,10 +53,6 @@ prompt
 server.log
 # Skills directory
 /skills/
-# Cloudflare Workers / OpenNext build output
-.open-next
-.wrangler
-.dev.vars
 
 # --- SEG7 Lab repo hygiene (sandbox internals stay on disk, out of git) ---
 /.zscripts
@@ -68,9 +64,6 @@ server.log
 /examples
 /mini-services
 /Caddyfile
-/.dev.vars
-/.open-next
-/.wrangler
 
 # local SQLite dev database (create with `bun run db:push`)
 /db/*.db

@@ -16,9 +16,9 @@ const geistMono = Geist_Mono({
 
 /**
  * Canonical site URL for absolute Open Graph / Twitter image URLs.
- * Set NEXT_PUBLIC_SITE_URL (e.g. https://seg7lab.<subdomain>.workers.dev)
- * as a build environment variable in Cloudflare Workers Builds — without
- * it Next falls back to localhost, which social scrapers cannot reach.
+ * Set NEXT_PUBLIC_SITE_URL (e.g. https://seg7lab.vercel.app) as a build
+ * environment variable on the host — without it Next falls back to
+ * localhost, which social scrapers cannot reach.
  */
 function resolveMetadataBase(): URL | undefined {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;

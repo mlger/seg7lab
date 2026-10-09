@@ -1,3 +1,0 @@
-# Workers Static Assets caching — hashed build output is immutable.
-/_next/static/*
-  Cache-Control: public, max-age=31536000, immutable
