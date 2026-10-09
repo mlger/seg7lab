@@ -1000,3 +1000,19 @@ Stage Summary:
 - Public surface, localStorage keys, persisted JSON shape, action names, lastAction strings, debounce timings all unchanged; tsc 0, eslint 0.
 - Browser E2E (agent-browser): initial hydration from empty storage; display-segment toggle persisted; truth-table cell cycle 1→X persisted and restored after reload; preset gallery apply (allon) regenerates the table; user preset "E2E Sync Test" saved locally AND POSTed to /api/presets (201, server row verified with the owner header — the extracted engine works end-to-end); project create + load through the split store (toProjectData/loadProject) verified on the server and in localStorage; zero console errors.
 - Gates: verify-logic 546/546, verify-api 70/70 (byte-identical), tsc 0, eslint 0.
+
+---
+Task ID: 27
+Agent: main (Z.ai Code)
+Task: Phase 2b — typed API client + extraction of ProjectManagerCard's transport into a hook (P6).
+
+Work Log:
+- Created src/lib/api-client.ts: typed transport for /api/projects (list/create/update/delete) returning the previously-unused ApiResult<T> discriminated union from src/types/api.ts (fixes the "defined but never used" finding); same URLs, same ownerHeaders, same JSON conventions; 204s never parsed; error envelope surfaced verbatim.
+- Created src/lib/use-projects-manager.ts: the Projects tab's client-side application behavior (cloud/local fallback state machine, one-request full list, push-up reconciliation with 409/400/413 semantics, row busy guards with synchronous ref mirror, save/load/duplicate/remove, toasts) — moved verbatim from ProjectManagerCard and routed through api-client.
+- Rewrote ProjectManagerCard as presentation-only (634 → ~350 lines): name-draft render-phase sync (the codebase's own idiom from InputControlsCard, replacing the useEffect — the original effect passed lint only because the larger component bailed out of compiler analysis), import handler stays in the component (store+validation orchestration, no transport).
+- Behavior-fidelity fixes caught during self-review before commit: pushUpLocalOnly must receive the fresh server rows as a parameter (not stale hook state); saveCurrent must slice the name to 100 like persistCurrent did; the import path needs a silent detachCurrentId (no "New project" toast).
+- Browser E2E (agent-browser, fresh DB): cloud create → server row + list; blocked /api/projects via network routing → Local mode badge + fallback banner; offline create → localStorage row; unblock + refresh → SQLite backend badge + push-up POST verified server-side (client-kept UUID id); duplicate; delete via confirmation AlertDialog; render-phase name sync against persisted workspace name.
+- Gates: tsc 0, eslint 0 (the new react-hooks set-state-in-effect error resolved by the render-phase sync, not by suppression).
+
+Stage Summary:
+- The component now maps UI events to hook calls; all fetch/error/fallback logic lives in lib/ behind ApiResult. ApiResult is used; preset-sync stays fetch-based (verbatim per ADR-0004 — wiring it through api-client would be behavior churn for no contract gain, documented in ARCHITECTURE.md).
