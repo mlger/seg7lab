@@ -1,0 +1,4808 @@
+{
+  "base": "http://localhost:3100",
+  "checkCount": 70,
+  "checks": [
+    {
+      "name": "projects: GET empty list (no owner)",
+      "status": 200,
+      "body": []
+    },
+    {
+      "name": "projects: GET empty full list",
+      "status": 200,
+      "body": []
+    },
+    {
+      "name": "projects: POST without content-type → 415",
+      "status": 415,
+      "body": {
+        "error": "Content-Type must be application/json"
+      }
+    },
+    {
+      "name": "projects: POST oversized body → 413",
+      "status": 413,
+      "body": {
+        "error": "Payload too large (max 1 MB)"
+      }
+    },
+    {
+      "name": "projects: POST malformed JSON → 400",
+      "status": 400,
+      "body": {
+        "error": "Invalid JSON"
+      }
+    },
+    {
+      "name": "projects: POST array body → 400",
+      "status": 400,
+      "body": {
+        "error": "Request body must be a JSON object."
+      }
+    },
+    {
+      "name": "projects: POST string body → 400",
+      "status": 400,
+      "body": {
+        "error": "Request body must be a JSON object."
+      }
+    },
+    {
+      "name": "projects: POST missing name → 400",
+      "status": 400,
+      "body": {
+        "error": "Field \"name\" is required and must be a string."
+      }
+    },
+    {
+      "name": "projects: POST empty name → 400",
+      "status": 400,
+      "body": {
+        "error": "Field \"name\" must be a non-empty string."
+      }
+    },
+    {
+      "name": "projects: POST long name → 400",
+      "status": 400,
+      "body": {
+        "error": "Field \"name\" must be at most 100 characters long."
+      }
+    },
+    {
+      "name": "projects: POST bad inputBits → 400",
+      "status": 400,
+      "body": {
+        "error": "Field \"inputBits\" must be 4 or 5."
+      }
+    },
+    {
+      "name": "projects: POST bad id charset → 400",
+      "status": 400,
+      "body": {
+        "error": "Field \"id\" is optional and must match ^[A-Za-z0-9_-]{8,64}$."
+      }
+    },
+    {
+      "name": "projects: POST data non-object → 400",
+      "status": 400,
+      "body": {
+        "error": "Field \"data\" must be a JSON object."
+      }
+    },
+    {
+      "name": "projects: POST data version 99 → 400 with E-201",
+      "status": 400,
+      "body": {
+        "error": "Invalid project data",
+        "errors": [
+          "E-201: Unsupported project version 99 (this build supports 1).",
+          "E-202: Missing or empty project \"name\" — using default.",
+          "E-203: \"inputBits\" must be 4 or 5 (got undefined) — using 4.",
+          "E-204: Invalid \"displayMode\" undefined — using \"custom\".",
+          "E-205: Invalid \"invalidBehavior\" undefined — using \"blank\".",
+          "E-208: Missing or invalid \"truthTable\" — using preset."
+        ]
+      }
+    },
+    {
+      "name": "projects: POST valid (owner A) → 201",
+      "status": 201,
+      "body": {
+        "corrupt": false,
+        "createdAt": "<TS>",
+        "data": {
+          "coverAdded": {},
+          "coverExcluded": {},
+          "currentInput": 0,
+          "displayMode": "custom",
+          "displaySettings": {
+            "activeColor": "#ff2d2d",
+            "brightness": 0.95,
+            "commonAnode": false,
+            "inactiveColor": "#3a1214",
+            "reverseLogic": false,
+            "showDP": true,
+            "skew": true
+          },
+          "fontStart": 0,
+          "inputBits": 4,
+          "invalidBehavior": "blank",
+          "name": "Baseline Project",
+          "tableStartCode": 0,
+          "truthTable": {
+            "inputBits": 4,
+            "rows": [
+              {
+                "input": 0,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 1,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 2,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 3,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 4,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 5,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 6,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 7,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 8,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 9,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 10,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 11,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 12,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 13,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 14,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 15,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              }
+            ]
+          },
+          "version": 1
+        },
+        "id": "baseline-project-01",
+        "inputBits": 4,
+        "name": "Baseline Project",
+        "ownerId": "11111111-2222-3333-4444-555555555555",
+        "updatedAt": "<TS>"
+      }
+    },
+    {
+      "name": "projects: POST duplicate id → 409",
+      "status": 409,
+      "body": {
+        "error": "id already exists"
+      }
+    },
+    {
+      "name": "projects: POST valid shared (no owner) → 201",
+      "status": 201,
+      "body": {
+        "corrupt": false,
+        "createdAt": "<TS>",
+        "data": {
+          "coverAdded": {},
+          "coverExcluded": {},
+          "currentInput": 0,
+          "displayMode": "custom",
+          "displaySettings": {
+            "activeColor": "#ff2d2d",
+            "brightness": 0.95,
+            "commonAnode": false,
+            "inactiveColor": "#3a1214",
+            "reverseLogic": false,
+            "showDP": true,
+            "skew": true
+          },
+          "fontStart": 0,
+          "inputBits": 5,
+          "invalidBehavior": "blank",
+          "name": "Baseline Project",
+          "tableStartCode": 0,
+          "truthTable": {
+            "inputBits": 5,
+            "rows": [
+              {
+                "input": 0,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 1,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 2,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 3,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 4,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 5,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 6,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 7,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 8,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 9,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 10,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 11,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 12,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 13,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 14,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 15,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 16,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 17,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 18,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 19,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 20,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 21,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 22,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 23,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 24,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 25,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 26,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 27,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 28,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 29,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 30,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 31,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              }
+            ]
+          },
+          "version": 1
+        },
+        "id": "baseline-shared-01",
+        "inputBits": 5,
+        "name": "Shared Project",
+        "ownerId": null,
+        "updatedAt": "<TS>"
+      }
+    },
+    {
+      "name": "projects: GET full list (owner A) → shared+mine, newest first",
+      "status": 200,
+      "body": [
+        {
+          "corrupt": false,
+          "createdAt": "<TS>",
+          "data": {
+            "coverAdded": {},
+            "coverExcluded": {},
+            "currentInput": 0,
+            "displayMode": "custom",
+            "displaySettings": {
+              "activeColor": "#ff2d2d",
+              "brightness": 0.95,
+              "commonAnode": false,
+              "inactiveColor": "#3a1214",
+              "reverseLogic": false,
+              "showDP": true,
+              "skew": true
+            },
+            "fontStart": 0,
+            "inputBits": 5,
+            "invalidBehavior": "blank",
+            "name": "Baseline Project",
+            "tableStartCode": 0,
+            "truthTable": {
+              "inputBits": 5,
+              "rows": [
+                {
+                  "input": 0,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 1,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 2,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 3,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 4,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 5,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 6,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 7,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 8,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 9,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 10,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 11,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 12,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 13,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 14,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 15,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 16,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 17,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 18,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 19,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 20,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 21,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 22,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 23,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 24,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 25,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 26,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 27,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 28,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 29,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 30,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 31,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                }
+              ]
+            },
+            "version": 1
+          },
+          "id": "baseline-shared-01",
+          "inputBits": 5,
+          "name": "Shared Project",
+          "ownerId": null,
+          "updatedAt": "<TS>"
+        },
+        {
+          "corrupt": false,
+          "createdAt": "<TS>",
+          "data": {
+            "coverAdded": {},
+            "coverExcluded": {},
+            "currentInput": 0,
+            "displayMode": "custom",
+            "displaySettings": {
+              "activeColor": "#ff2d2d",
+              "brightness": 0.95,
+              "commonAnode": false,
+              "inactiveColor": "#3a1214",
+              "reverseLogic": false,
+              "showDP": true,
+              "skew": true
+            },
+            "fontStart": 0,
+            "inputBits": 4,
+            "invalidBehavior": "blank",
+            "name": "Baseline Project",
+            "tableStartCode": 0,
+            "truthTable": {
+              "inputBits": 4,
+              "rows": [
+                {
+                  "input": 0,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 1,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 2,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 3,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 4,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 5,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 6,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 7,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 8,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 9,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 10,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 11,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 12,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 13,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 14,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 15,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                }
+              ]
+            },
+            "version": 1
+          },
+          "id": "baseline-project-01",
+          "inputBits": 4,
+          "name": "Baseline Project",
+          "ownerId": "11111111-2222-3333-4444-555555555555",
+          "updatedAt": "<TS>"
+        }
+      ]
+    },
+    {
+      "name": "projects: GET list (owner B) → shared only",
+      "status": 200,
+      "body": [
+        {
+          "createdAt": "<TS>",
+          "id": "baseline-shared-01",
+          "inputBits": 5,
+          "name": "Shared Project",
+          "ownerId": null,
+          "updatedAt": "<TS>"
+        }
+      ]
+    },
+    {
+      "name": "projects: GET list (malformed owner header) → shared only",
+      "status": 200,
+      "body": [
+        {
+          "createdAt": "<TS>",
+          "id": "baseline-shared-01",
+          "inputBits": 5,
+          "name": "Shared Project",
+          "ownerId": null,
+          "updatedAt": "<TS>"
+        }
+      ]
+    },
+    {
+      "name": "projects: GET list (no owner) → shared only",
+      "status": 200,
+      "body": [
+        {
+          "createdAt": "<TS>",
+          "id": "baseline-shared-01",
+          "inputBits": 5,
+          "name": "Shared Project",
+          "ownerId": null,
+          "updatedAt": "<TS>"
+        }
+      ]
+    },
+    {
+      "name": "projects: GET own row → 200",
+      "status": 200,
+      "body": {
+        "corrupt": false,
+        "createdAt": "<TS>",
+        "data": {
+          "coverAdded": {},
+          "coverExcluded": {},
+          "currentInput": 0,
+          "displayMode": "custom",
+          "displaySettings": {
+            "activeColor": "#ff2d2d",
+            "brightness": 0.95,
+            "commonAnode": false,
+            "inactiveColor": "#3a1214",
+            "reverseLogic": false,
+            "showDP": true,
+            "skew": true
+          },
+          "fontStart": 0,
+          "inputBits": 4,
+          "invalidBehavior": "blank",
+          "name": "Baseline Project",
+          "tableStartCode": 0,
+          "truthTable": {
+            "inputBits": 4,
+            "rows": [
+              {
+                "input": 0,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 1,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 2,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 3,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 4,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 5,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 6,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 7,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 8,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 9,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 10,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 11,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 12,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 13,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 14,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 15,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              }
+            ]
+          },
+          "version": 1
+        },
+        "id": "baseline-project-01",
+        "inputBits": 4,
+        "name": "Baseline Project",
+        "ownerId": "11111111-2222-3333-4444-555555555555",
+        "updatedAt": "<TS>"
+      }
+    },
+    {
+      "name": "projects: GET foreign row (owner B) → 404 hides existence",
+      "status": 404,
+      "body": {
+        "error": "Project not found."
+      }
+    },
+    {
+      "name": "projects: GET foreign row (no owner) → 404",
+      "status": 404,
+      "body": {
+        "error": "Project not found."
+      }
+    },
+    {
+      "name": "projects: GET shared row (owner B) → 200",
+      "status": 200,
+      "body": {
+        "corrupt": false,
+        "createdAt": "<TS>",
+        "data": {
+          "coverAdded": {},
+          "coverExcluded": {},
+          "currentInput": 0,
+          "displayMode": "custom",
+          "displaySettings": {
+            "activeColor": "#ff2d2d",
+            "brightness": 0.95,
+            "commonAnode": false,
+            "inactiveColor": "#3a1214",
+            "reverseLogic": false,
+            "showDP": true,
+            "skew": true
+          },
+          "fontStart": 0,
+          "inputBits": 5,
+          "invalidBehavior": "blank",
+          "name": "Baseline Project",
+          "tableStartCode": 0,
+          "truthTable": {
+            "inputBits": 5,
+            "rows": [
+              {
+                "input": 0,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 1,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 2,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 3,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 4,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 5,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 6,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 7,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 8,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 9,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 10,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 11,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 12,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 13,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 14,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 15,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 16,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 17,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 18,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 19,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 20,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 21,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 22,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 23,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 24,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 25,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 26,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 27,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 28,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 29,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 30,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 31,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              }
+            ]
+          },
+          "version": 1
+        },
+        "id": "baseline-shared-01",
+        "inputBits": 5,
+        "name": "Shared Project",
+        "ownerId": null,
+        "updatedAt": "<TS>"
+      }
+    },
+    {
+      "name": "projects: GET unknown id → 404",
+      "status": 404,
+      "body": {
+        "error": "Project not found."
+      }
+    },
+    {
+      "name": "projects: PUT without content-type → 415 (guard before 404)",
+      "status": 415,
+      "body": {
+        "error": "Content-Type must be application/json"
+      }
+    },
+    {
+      "name": "projects: PUT unknown id → 404",
+      "status": 404,
+      "body": {
+        "error": "Project not found."
+      }
+    },
+    {
+      "name": "projects: PUT stale expectedUpdatedAt → 409 conflict",
+      "status": 409,
+      "body": {
+        "currentUpdatedAt": "<TS>",
+        "error": "conflict"
+      }
+    },
+    {
+      "name": "projects: PUT foreign row → 403",
+      "status": 403,
+      "body": {
+        "error": "not your row"
+      }
+    },
+    {
+      "name": "projects: PUT rename → 200",
+      "status": 200,
+      "body": {
+        "corrupt": false,
+        "createdAt": "<TS>",
+        "data": {
+          "coverAdded": {},
+          "coverExcluded": {},
+          "currentInput": 0,
+          "displayMode": "custom",
+          "displaySettings": {
+            "activeColor": "#ff2d2d",
+            "brightness": 0.95,
+            "commonAnode": false,
+            "inactiveColor": "#3a1214",
+            "reverseLogic": false,
+            "showDP": true,
+            "skew": true
+          },
+          "fontStart": 0,
+          "inputBits": 4,
+          "invalidBehavior": "blank",
+          "name": "Baseline Project",
+          "tableStartCode": 0,
+          "truthTable": {
+            "inputBits": 4,
+            "rows": [
+              {
+                "input": 0,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 1,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 2,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 3,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 4,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 5,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 6,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 7,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 8,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 9,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 10,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 11,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 12,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 13,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 14,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 15,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              }
+            ]
+          },
+          "version": 1
+        },
+        "id": "baseline-project-01",
+        "inputBits": 4,
+        "name": "Renamed Project",
+        "ownerId": "11111111-2222-3333-4444-555555555555",
+        "updatedAt": "<TS>"
+      }
+    },
+    {
+      "name": "projects: PUT empty body → 200 no-op",
+      "status": 200,
+      "body": {
+        "corrupt": false,
+        "createdAt": "<TS>",
+        "data": {
+          "coverAdded": {},
+          "coverExcluded": {},
+          "currentInput": 0,
+          "displayMode": "custom",
+          "displaySettings": {
+            "activeColor": "#ff2d2d",
+            "brightness": 0.95,
+            "commonAnode": false,
+            "inactiveColor": "#3a1214",
+            "reverseLogic": false,
+            "showDP": true,
+            "skew": true
+          },
+          "fontStart": 0,
+          "inputBits": 4,
+          "invalidBehavior": "blank",
+          "name": "Baseline Project",
+          "tableStartCode": 0,
+          "truthTable": {
+            "inputBits": 4,
+            "rows": [
+              {
+                "input": 0,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 1,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 2,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 3,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 4,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 5,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 6,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 7,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 8,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 9,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 10,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 11,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 12,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 13,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 14,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 15,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              }
+            ]
+          },
+          "version": 1
+        },
+        "id": "baseline-project-01",
+        "inputBits": 4,
+        "name": "Renamed Project",
+        "ownerId": "11111111-2222-3333-4444-555555555555",
+        "updatedAt": "<TS>"
+      }
+    },
+    {
+      "name": "projects: PUT invalid name → 400",
+      "status": 400,
+      "body": {
+        "error": "Field \"name\" must be a non-empty string."
+      }
+    },
+    {
+      "name": "projects: PUT invalid data → 400 with E-201",
+      "status": 400,
+      "body": {
+        "error": "Invalid project data",
+        "errors": [
+          "E-201: Unsupported project version 99 (this build supports 1).",
+          "E-202: Missing or empty project \"name\" — using default.",
+          "E-203: \"inputBits\" must be 4 or 5 (got undefined) — using 4.",
+          "E-204: Invalid \"displayMode\" undefined — using \"custom\".",
+          "E-205: Invalid \"invalidBehavior\" undefined — using \"blank\".",
+          "E-208: Missing or invalid \"truthTable\" — using preset."
+        ]
+      }
+    },
+    {
+      "name": "projects: PUT shared row (owner B) → 200 (shared writable)",
+      "status": 200,
+      "body": {
+        "corrupt": false,
+        "createdAt": "<TS>",
+        "data": {
+          "coverAdded": {},
+          "coverExcluded": {},
+          "currentInput": 0,
+          "displayMode": "custom",
+          "displaySettings": {
+            "activeColor": "#ff2d2d",
+            "brightness": 0.95,
+            "commonAnode": false,
+            "inactiveColor": "#3a1214",
+            "reverseLogic": false,
+            "showDP": true,
+            "skew": true
+          },
+          "fontStart": 0,
+          "inputBits": 5,
+          "invalidBehavior": "blank",
+          "name": "Baseline Project",
+          "tableStartCode": 0,
+          "truthTable": {
+            "inputBits": 5,
+            "rows": [
+              {
+                "input": 0,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 1,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 2,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 3,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 4,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 5,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 6,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 7,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 8,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 9,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 10,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 11,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 12,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 13,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 14,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 15,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 16,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 17,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 18,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 19,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 20,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 21,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 22,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 23,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 24,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 25,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 26,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 27,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 28,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 29,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 30,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 31,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              }
+            ]
+          },
+          "version": 1
+        },
+        "id": "baseline-shared-01",
+        "inputBits": 5,
+        "name": "Shared Renamed",
+        "ownerId": null,
+        "updatedAt": "<TS>"
+      }
+    },
+    {
+      "name": "projects: GET limit=1 → newest only",
+      "status": 200,
+      "body": [
+        {
+          "createdAt": "<TS>",
+          "id": "baseline-shared-01",
+          "inputBits": 5,
+          "name": "Shared Renamed",
+          "ownerId": null,
+          "updatedAt": "<TS>"
+        }
+      ]
+    },
+    {
+      "name": "projects: GET limit=0 → clamped to 1",
+      "status": 200,
+      "body": [
+        {
+          "createdAt": "<TS>",
+          "id": "baseline-shared-01",
+          "inputBits": 5,
+          "name": "Shared Renamed",
+          "ownerId": null,
+          "updatedAt": "<TS>"
+        }
+      ]
+    },
+    {
+      "name": "projects: GET offset=1 → skips newest",
+      "status": 200,
+      "body": [
+        {
+          "createdAt": "<TS>",
+          "id": "baseline-project-01",
+          "inputBits": 4,
+          "name": "Renamed Project",
+          "ownerId": "11111111-2222-3333-4444-555555555555",
+          "updatedAt": "<TS>"
+        }
+      ]
+    },
+    {
+      "name": "projects: GET limit=abc → default 100",
+      "status": 200,
+      "body": [
+        {
+          "createdAt": "<TS>",
+          "id": "baseline-shared-01",
+          "inputBits": 5,
+          "name": "Shared Renamed",
+          "ownerId": null,
+          "updatedAt": "<TS>"
+        },
+        {
+          "createdAt": "<TS>",
+          "id": "baseline-project-01",
+          "inputBits": 4,
+          "name": "Renamed Project",
+          "ownerId": "11111111-2222-3333-4444-555555555555",
+          "updatedAt": "<TS>"
+        }
+      ]
+    },
+    {
+      "name": "projects: DELETE foreign row → 403",
+      "status": 403,
+      "body": {
+        "error": "not your row"
+      }
+    },
+    {
+      "name": "projects: DELETE own row → 204",
+      "status": 204,
+      "body": null
+    },
+    {
+      "name": "projects: DELETE again → 404",
+      "status": 404,
+      "body": {
+        "error": "Project not found."
+      }
+    },
+    {
+      "name": "projects: GET list after delete (owner A) → shared only",
+      "status": 200,
+      "body": [
+        {
+          "createdAt": "<TS>",
+          "id": "baseline-shared-01",
+          "inputBits": 5,
+          "name": "Shared Renamed",
+          "ownerId": null,
+          "updatedAt": "<TS>"
+        }
+      ]
+    },
+    {
+      "name": "presets: GET empty list (no owner)",
+      "status": 200,
+      "body": []
+    },
+    {
+      "name": "presets: POST without content-type → 415",
+      "status": 415,
+      "body": {
+        "error": "Content-Type must be application/json"
+      }
+    },
+    {
+      "name": "presets: POST missing id → 400",
+      "status": 400,
+      "body": {
+        "error": "Field \"id\" must be \"user:\" followed by 1-94 letters, digits, \"_\" or \"-\"."
+      }
+    },
+    {
+      "name": "presets: POST bad id prefix → 400",
+      "status": 400,
+      "body": {
+        "error": "Field \"id\" must be \"user:\" followed by 1-94 letters, digits, \"_\" or \"-\"."
+      }
+    },
+    {
+      "name": "presets: POST bad kind → 400",
+      "status": 400,
+      "body": {
+        "error": "Field \"kind\" must be \"table\" or \"font\"."
+      }
+    },
+    {
+      "name": "presets: POST missing name → 400",
+      "status": 400,
+      "body": {
+        "error": "Field \"name\" is required and must be a string."
+      }
+    },
+    {
+      "name": "presets: POST data.id mismatch → 400",
+      "status": 400,
+      "body": {
+        "error": "id mismatch between body and data"
+      }
+    },
+    {
+      "name": "presets: POST invalid data → 400 with E-280",
+      "status": 400,
+      "body": {
+        "error": "Invalid preset data",
+        "errors": [
+          "E-280: preset data failed validation"
+        ]
+      }
+    },
+    {
+      "name": "presets: POST valid table preset (owner A) → 201",
+      "status": 201,
+      "body": {
+        "corrupt": false,
+        "createdAt": "<TS>",
+        "data": {
+          "category": "User",
+          "createdAt": "<TS>",
+          "generator": "literal",
+          "id": "user:baseline-01",
+          "inputBits": 4,
+          "name": "Baseline Table",
+          "options": {
+            "invalidBehavior": "blank",
+            "tableStartCode": 0
+          },
+          "table": {
+            "inputBits": 4,
+            "rows": [
+              {
+                "input": 0,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 1,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 2,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 3,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 4,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 5,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 6,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 7,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 8,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 9,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 10,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 11,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 12,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 13,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 14,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 15,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              }
+            ]
+          },
+          "updatedAt": "<TS>"
+        },
+        "id": "user:baseline-01",
+        "kind": "table",
+        "name": "Baseline Table",
+        "ownerId": "11111111-2222-3333-4444-555555555555",
+        "updatedAt": "<TS>"
+      }
+    },
+    {
+      "name": "presets: POST duplicate → 409",
+      "status": 409,
+      "body": {
+        "error": "preset id already exists"
+      }
+    },
+    {
+      "name": "presets: POST valid font preset (shared) → 201",
+      "status": 201,
+      "body": {
+        "corrupt": false,
+        "createdAt": "<TS>",
+        "data": {
+          "builtin": false,
+          "createdAt": "<TS>",
+          "glyphs": [
+            {
+              "char": "0",
+              "segments": "ABCDEF"
+            },
+            {
+              "char": "1",
+              "segments": "BC"
+            }
+          ],
+          "id": "user:baseline-font-01",
+          "name": "Baseline Font",
+          "updatedAt": "<TS>"
+        },
+        "id": "user:baseline-font-01",
+        "kind": "font",
+        "name": "Baseline Font",
+        "ownerId": null,
+        "updatedAt": "<TS>"
+      }
+    },
+    {
+      "name": "presets: GET list (owner A) → both, newest first",
+      "status": 200,
+      "body": [
+        {
+          "corrupt": false,
+          "createdAt": "<TS>",
+          "data": {
+            "builtin": false,
+            "createdAt": "<TS>",
+            "glyphs": [
+              {
+                "char": "0",
+                "segments": "ABCDEF"
+              },
+              {
+                "char": "1",
+                "segments": "BC"
+              }
+            ],
+            "id": "user:baseline-font-01",
+            "name": "Baseline Font",
+            "updatedAt": "<TS>"
+          },
+          "id": "user:baseline-font-01",
+          "kind": "font",
+          "name": "Baseline Font",
+          "ownerId": null,
+          "updatedAt": "<TS>"
+        },
+        {
+          "corrupt": false,
+          "createdAt": "<TS>",
+          "data": {
+            "category": "User",
+            "createdAt": "<TS>",
+            "generator": "literal",
+            "id": "user:baseline-01",
+            "inputBits": 4,
+            "name": "Baseline Table",
+            "options": {
+              "invalidBehavior": "blank",
+              "tableStartCode": 0
+            },
+            "table": {
+              "inputBits": 4,
+              "rows": [
+                {
+                  "input": 0,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 1,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 2,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 3,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 4,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 5,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 6,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 7,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 8,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 9,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 10,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 11,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 12,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 13,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 14,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                },
+                {
+                  "input": 15,
+                  "outputs": {
+                    "A": 0,
+                    "B": 0,
+                    "C": 0,
+                    "D": 0,
+                    "DP": 0,
+                    "E": 0,
+                    "F": 0,
+                    "G": 0
+                  }
+                }
+              ]
+            },
+            "updatedAt": "<TS>"
+          },
+          "id": "user:baseline-01",
+          "kind": "table",
+          "name": "Baseline Table",
+          "ownerId": "11111111-2222-3333-4444-555555555555",
+          "updatedAt": "<TS>"
+        }
+      ]
+    },
+    {
+      "name": "presets: GET slim list (owner B) → shared only, slim shape",
+      "status": 200,
+      "body": [
+        {
+          "createdAt": "<TS>",
+          "id": "user:baseline-font-01",
+          "kind": "font",
+          "name": "Baseline Font",
+          "ownerId": null,
+          "updatedAt": "<TS>"
+        }
+      ]
+    },
+    {
+      "name": "presets: GET own row → 200",
+      "status": 200,
+      "body": {
+        "corrupt": false,
+        "createdAt": "<TS>",
+        "data": {
+          "category": "User",
+          "createdAt": "<TS>",
+          "generator": "literal",
+          "id": "user:baseline-01",
+          "inputBits": 4,
+          "name": "Baseline Table",
+          "options": {
+            "invalidBehavior": "blank",
+            "tableStartCode": 0
+          },
+          "table": {
+            "inputBits": 4,
+            "rows": [
+              {
+                "input": 0,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 1,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 2,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 3,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 4,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 5,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 6,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 7,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 8,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 9,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 10,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 11,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 12,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 13,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 14,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 15,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              }
+            ]
+          },
+          "updatedAt": "<TS>"
+        },
+        "id": "user:baseline-01",
+        "kind": "table",
+        "name": "Baseline Table",
+        "ownerId": "11111111-2222-3333-4444-555555555555",
+        "updatedAt": "<TS>"
+      }
+    },
+    {
+      "name": "presets: GET foreign row → 404",
+      "status": 404,
+      "body": {
+        "error": "Preset not found."
+      }
+    },
+    {
+      "name": "presets: GET unknown → 404",
+      "status": 404,
+      "body": {
+        "error": "Preset not found."
+      }
+    },
+    {
+      "name": "presets: PUT stale expectedUpdatedAt → 409",
+      "status": 409,
+      "body": {
+        "currentUpdatedAt": "<TS>",
+        "error": "conflict"
+      }
+    },
+    {
+      "name": "presets: PUT foreign row → 403",
+      "status": 403,
+      "body": {
+        "error": "not your row"
+      }
+    },
+    {
+      "name": "presets: PUT rename → 200",
+      "status": 200,
+      "body": {
+        "corrupt": false,
+        "createdAt": "<TS>",
+        "data": {
+          "category": "User",
+          "createdAt": "<TS>",
+          "generator": "literal",
+          "id": "user:baseline-01",
+          "inputBits": 4,
+          "name": "Baseline Table",
+          "options": {
+            "invalidBehavior": "blank",
+            "tableStartCode": 0
+          },
+          "table": {
+            "inputBits": 4,
+            "rows": [
+              {
+                "input": 0,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 1,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 2,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 3,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 4,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 5,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 6,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 7,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 8,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 9,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 10,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 11,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 12,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 13,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 14,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 15,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              }
+            ]
+          },
+          "updatedAt": "<TS>"
+        },
+        "id": "user:baseline-01",
+        "kind": "table",
+        "name": "Renamed Table",
+        "ownerId": "11111111-2222-3333-4444-555555555555",
+        "updatedAt": "<TS>"
+      }
+    },
+    {
+      "name": "presets: PUT empty body → 200 no-op (id/kind immutable, ignored)",
+      "status": 200,
+      "body": {
+        "corrupt": false,
+        "createdAt": "<TS>",
+        "data": {
+          "category": "User",
+          "createdAt": "<TS>",
+          "generator": "literal",
+          "id": "user:baseline-01",
+          "inputBits": 4,
+          "name": "Baseline Table",
+          "options": {
+            "invalidBehavior": "blank",
+            "tableStartCode": 0
+          },
+          "table": {
+            "inputBits": 4,
+            "rows": [
+              {
+                "input": 0,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 1,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 2,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 3,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 4,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 5,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 6,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 7,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 8,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 9,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 10,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 11,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 12,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 13,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 14,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              },
+              {
+                "input": 15,
+                "outputs": {
+                  "A": 0,
+                  "B": 0,
+                  "C": 0,
+                  "D": 0,
+                  "DP": 0,
+                  "E": 0,
+                  "F": 0,
+                  "G": 0
+                }
+              }
+            ]
+          },
+          "updatedAt": "<TS>"
+        },
+        "id": "user:baseline-01",
+        "kind": "table",
+        "name": "Renamed Table",
+        "ownerId": "11111111-2222-3333-4444-555555555555",
+        "updatedAt": "<TS>"
+      }
+    },
+    {
+      "name": "presets: PUT font data against table row → 400 E-280 (kind-validated)",
+      "status": 400,
+      "body": {
+        "error": "Invalid preset data",
+        "errors": [
+          "E-280: preset data failed validation"
+        ]
+      }
+    },
+    {
+      "name": "presets: PUT data with mismatched embedded id → 400",
+      "status": 400,
+      "body": {
+        "error": "id mismatch between body and data"
+      }
+    },
+    {
+      "name": "presets: PUT shared row (owner B) → 200 (shared writable)",
+      "status": 200,
+      "body": {
+        "corrupt": false,
+        "createdAt": "<TS>",
+        "data": {
+          "builtin": false,
+          "createdAt": "<TS>",
+          "glyphs": [
+            {
+              "char": "0",
+              "segments": "ABCDEF"
+            },
+            {
+              "char": "1",
+              "segments": "BC"
+            }
+          ],
+          "id": "user:baseline-font-01",
+          "name": "Baseline Font",
+          "updatedAt": "<TS>"
+        },
+        "id": "user:baseline-font-01",
+        "kind": "font",
+        "name": "Shared Font Renamed",
+        "ownerId": null,
+        "updatedAt": "<TS>"
+      }
+    },
+    {
+      "name": "presets: DELETE foreign row → 403",
+      "status": 403,
+      "body": {
+        "error": "not your row"
+      }
+    },
+    {
+      "name": "presets: DELETE shared row (owner B) → 204 (shared deletable)",
+      "status": 204,
+      "body": null
+    },
+    {
+      "name": "presets: DELETE own row → 204",
+      "status": 204,
+      "body": null
+    },
+    {
+      "name": "presets: GET list after deletes → empty",
+      "status": 200,
+      "body": []
+    }
+  ]
+}

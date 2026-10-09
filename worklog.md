@@ -966,3 +966,20 @@ Work Log:
 Stage Summary:
 - The K-map now reads as the reference does: diagonal corner header, value upper-left, minterm lower-right, all-green text, sharp group outlines.
 - Confirmed by inspection that the underlying Gray ordering and minterm numbering already matched the reference exactly, so nothing in the logic layer was touched — the change is presentational, and the 546-check suite (which asserts the K-map minterm math) stayed green throughout.
+
+---
+Task ID: 25
+Agent: main (Z.ai Code)
+Task: Clean-architecture refactor of the whole repository, behavior-preserving (user: "Refactor the entire repository into a practical, maintainable Clean Architecture while preserving existing application behavior"). Work on branch refactor/clean-architecture.
+
+Work Log:
+- Phase 0 (baseline): ran all existing suites green (verify-logic 546/546, verify-circuitverse 64,205/64,205 under bun — note: that script cannot run under Node strip-types due to TS parameter properties, recorded as a pre-existing quirk), eslint clean, tsc clean. Built scripts/verify-api.mjs — a 70-check REST contract characterization harness (record/compare modes, fresh-DB + client-supplied ids + timestamp normalization for determinism; determinism proven by recording twice against two fresh databases and diffing identical). Baseline contract committed at docs/verification/api-contract.json.
+- Wrote docs/REFACTOR_PLAN.md (10 concrete problems with examples, target structure, phases, acceptance criteria, exclusions), docs/REFACTOR_PROGRESS.md, docs/VERIFICATION.md, and seven ADRs (docs/decisions/0001-0007): logic layer stays the domain; server service+repository with function DI; the characterization harness; the store split strategy; no dependency changes; boundary enforcement; the pre-existing production API defect documented rather than fixed.
+- Phase 1 (server clean architecture): created src/server/ — kernel.ts (framework-free ApiError/owner/body-guard/pagination/Prisma-narrowing — ONE copy replacing the ~150 duplicated lines), projects/ and presets/ (repository.ts contract, prisma.ts adapter, service.ts use cases owning visibility/precedence/locking/validation), composition.ts (memoized wiring), db.ts (singleton moved from src/lib). Routes in src/app/api/ rewritten as thin transport handlers mapping ApiError → the exact existing NextResponse shapes via src/app/api/_lib/http.ts. Deleted both mirrored helpers.ts, dead src/lib/owner.ts, and src/lib/db.ts.
+- Added scripts/verify-services.ts: 62 use-case checks on plain Node with in-memory repository fakes (covers what verify-api cannot: corrupt-blob reads, P2025/P2002 mappings, 404→403→409→400 precedence incl. "409 beats 400").
+- Gate results: verify-api 70/70 byte-identical against the pre-refactor recording; verify-services 62/62; verify-logic 546/546 unchanged; eslint clean; tsc clean; agent-browser confirms the app renders and /api/presets now answers 200 through the new layer.
+
+Stage Summary:
+- REST surface now flows route → service (use cases) → repository interface → Prisma adapter; business rules (ownership visibility, existence-hiding 404s, optimistic-lock precedence, blob validation) live in services, testable without HTTP or a database.
+- Wire contract proven unchanged by the recorded characterization file; no schema/dependency/visual changes.
+- Known gap accepted per ADR-0007: production Vercel deployment still 500s on the API (pre-existing SQLite-on-serverless issue, needs an owner decision + env config).
