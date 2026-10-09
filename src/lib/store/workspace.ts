@@ -66,6 +66,7 @@ export interface WorkspaceSlice {
   explainMode: boolean;
   activeSegment: SegmentName;
   expressionForm: SimulatorState['expressionForm'];
+  circuitStyle: SimulatorState['circuitStyle'];
   kmapShowMinterms: boolean;
   hydrated: boolean;
   lastAction: string | null;
@@ -110,6 +111,7 @@ export interface WorkspaceSlice {
   setExplainMode: (on: boolean) => void;
   setActiveSegment: (segment: SegmentName) => void;
   setExpressionForm: (form: SimulatorState['expressionForm']) => void;
+  setCircuitStyle: (style: SimulatorState['circuitStyle']) => void;
   setKmapShowMinterms: (on: boolean) => void;
 
   toggleCoverGroup: (
@@ -142,6 +144,7 @@ export const createWorkspaceSlice: StateCreator<SimulatorState, [], [], Workspac
   explainMode: false,
   activeSegment: 'A',
   expressionForm: 'sop',
+  circuitStyle: 'basic',
   kmapShowMinterms: false,
   hydrated: false,
   lastAction: null,
@@ -554,6 +557,7 @@ export const createWorkspaceSlice: StateCreator<SimulatorState, [], [], Workspac
   setExplainMode: (on) => set({ explainMode: on }),
   setActiveSegment: (segment) => set({ activeSegment: segment }),
   setExpressionForm: (form) => set({ expressionForm: form }),
+  setCircuitStyle: (style) => set({ circuitStyle: style }),
   setKmapShowMinterms: (on) => set({ kmapShowMinterms: on }),
 
   toggleCoverGroup: (segment, form, key, inMinimalCover) => {

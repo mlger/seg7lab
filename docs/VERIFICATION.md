@@ -130,6 +130,38 @@ suite), the dialog's pattern section in
 `custom-scroll` grid, per-glyph tooltips + aria-pressed, active-pattern
 emerald highlight across hex, Roman and Blank/All X buttons).
 
+### Falstad combined display export (2026-10-09)
+
+The Falstad export became ONE self-contained file: every segment decoder
+stacked as a band, ONE shared input bus (a switch per variable whose vertical
+rail passes exactly through every band's input pin), and a real SevenSegElm
+(157, 8 pins incl. DP) — flip the switches at falstad.com/circuit and the
+digit lights up. It follows the on-screen form and gate style (canonical
+csop/cpos included; factored falls back to basic there exactly like the
+circuit tab). The format facts (157 pin geometry, east/e dp pins, classic `$`
+import) were re-verified live against falstad.com/circuit before
+implementation.
+
+| Check | Command | Result |
+|---|---|---|
+| Pure logic suite | `bun run verify:logic` | **1252 passed, 0 failed on the branch (546 + 706 new); 1298 after the PR #4 rebase (592 + 706)** |
+| Netlist semantics | (in-suite `evalFalstadDisplay`) | **every input combination lights the correct segments** for 4/5-bit × sop/pos × basic/factored × minimized/canonical — the exported file is parsed, nets union-found, values propagated, display pins compared against the expected forms |
+| Geometry invariants | (in-suite, combined file) | **no dangling endpoints, no endpoint on a foreign run, no cross-net collinear overlap, no wire through gate or display body, all 8 pins driven, one shared L per used variable, determinism** |
+| Lint / types | `bunx eslint .` · `bunx tsc --noEmit` | **clean** |
+| Boundary / services / CircuitVerse | `bun run verify:boundaries` · `npm run verify:services` · `bun run scripts/verify-circuitverse.ts` | **0 violations · 62/62 · 64,205/64,205** |
+| REST contract | no API/persisted-shape change (circuitStyle is session state like expressionForm; ProjectData untouched) | **pinned by CI's 70-check suite** |
+| Live tool import | falstad.com/circuit "Import From Text" + switch toggling | **see worklog — display digit follows the input switches** |
+
+Changes: `buildFalstadDisplayNetlist` + `termsForSegment` + `canonical`
+option in `src/logic/falstad.ts` (emitCircuit gained shared-input /
+skip-probe modes and returns the display-net plumbing); `circuitStyle` lifted
+from LogicCircuitCard local state into the store (session state — the
+Falstad export follows it); ExportMenu exports ONE combined file named
+`<project>-falstad-display-<form>.txt`; PRD/README limitations lifted.
+Per-segment export (`buildFalstadNetlist`) kept as a tested API and gained
+the same canonical + engine-based const-detection fixes (inverter-only
+segments are no longer wrongly skipped).
+
 ## Known gaps
 
 - verify-api cannot exercise: server-generated cuid ids (the harness always

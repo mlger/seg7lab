@@ -24,7 +24,7 @@ import {
 import { downloadBlob, downloadText, sanitizeFilename } from '@/utils/download';
 import { toast } from '@/hooks/use-toast';
 import { CircuitVerseExportDialog } from './CircuitVerseExportDialog';
-import { buildFalstadNetlist, falstadFilename } from '@/logic/falstad';
+import { buildFalstadDisplayNetlist, falstadDisplayFilename } from '@/logic/falstad';
 import { SEGMENT_NAMES } from '@/types/simulator';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -40,6 +40,8 @@ export function ExportMenu({ displaySvgRef }: { displaySvgRef: React.RefObject<S
   const projectName = useSimulator((s) => s.projectName);
   const engines = useEngines();
   const truthTable = useSimulator((s) => s.truthTable);
+  const expressionForm = useSimulator((s) => s.expressionForm);
+  const circuitStyle = useSimulator((s) => s.circuitStyle);
   const inputBits = useSimulator((s) => s.inputBits);
   const tableStartCode = useSimulator((s) => s.tableStartCode);
   const invalidBehavior = useSimulator((s) => s.invalidBehavior);
@@ -136,27 +138,27 @@ export function ExportMenu({ displaySvgRef }: { displaySvgRef: React.RefObject<S
           </DropdownMenuItem>
           <DropdownMenuItem
             {...exportItem('Falstad netlist', () => {
-              // One circuit per segment, in the classic `$` text netlist that
-              // CircuitJS1 (falstad.com/circuit) opens via File → Open File… or
-              // "Import From Text". Each segment exports as its own file because a
-              // single file holding several circuits risks their corridors
-              // colliding, and one file per circuit is the idiomatic shape.
+              // ONE file with the whole app in it: every segment decoder, a
+              // SHARED input bus (one switch per variable) and a real 7-segment
+              // display element (157) — open it at falstad.com/circuit via
+              // File → Open File… or "Import From Text", flip the switches,
+              // watch the digit. Follows the on-screen form and gate style
+              // (canonical forms export their unminimized netlists; factored
+              // falls back to basic there, exactly like the circuit tab).
               const proj = toProjectData();
               const varNames = proj.variableNames ?? [];
-              for (const seg of SEGMENT_NAMES) {
-                const built = buildFalstadNetlist(engines, proj.inputBits, varNames, {
-                  form: 'sop',
-                  style: 'basic',
-                  segments: [seg],
-                });
-                // Skip constant segments (nothing to draw).
-                if (!built.perSegment[seg]) continue;
-                downloadText(
-                  built.text,
-                  `${falstadFilename(proj.name, { form: 'sop', style: 'basic', segments: [seg] })}.txt`,
-                  'text/plain',
-                );
-              }
+              const isCanonical = expressionForm === 'csop' || expressionForm === 'cpos';
+              const form: 'sop' | 'pos' =
+                expressionForm === 'pos' || expressionForm === 'cpos' ? 'pos' : 'sop';
+              const style: typeof circuitStyle =
+                isCanonical && circuitStyle === 'factored' ? 'basic' : circuitStyle;
+              const opts = { form, style, canonical: isCanonical };
+              const built = buildFalstadDisplayNetlist(engines, proj.inputBits, varNames, opts);
+              downloadText(
+                built.text,
+                `${falstadDisplayFilename(proj.name, opts)}.txt`,
+                'text/plain',
+              );
             })}
           >
             <CircuitBoard className="mr-2 h-4 w-4" aria-hidden /> Falstad / CircuitJS1 (.txt)

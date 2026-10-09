@@ -88,7 +88,7 @@ Applied as a table preset it maps **glyph i → code i** (4-bit → A–P, 5-bit
 | **Project / preset / font JSON** | Round-trippable design files. |
 | **Verilog** | A synthesizable module. |
 | **CircuitVerse `.cv`** | Interactive gate circuit for circuitverse.org. |
-| **Falstad / CircuitJS1 `.txt`** | The classic `$` netlist for falstad.com/circuit — open with **File → Open File…** or **Import From Text**. |
+| **Falstad / CircuitJS1 `.txt`** | ONE file with the whole app: every segment decoder, a shared input bus, and a real 7-segment display — open with **File → Open File…** or **Import From Text**, flip the switches, watch the digit. |
 | **SVG / PNG** | Display and circuit images. |
 | **PDF report** | Truth table + K-maps + Boolean equations. |
 
@@ -114,7 +114,7 @@ The pure logic layer and every layer above it have permanent suites:
 
 | Command | Suite |
 |---|---|
-| `npm run verify:logic:node` | **592 checks** — parser, minimiser, K-maps, expressions, netlists, wire routing, factoring, Falstad geometry, standard patterns, Roman-letters picture pin, editor palette, determinism |
+| `npm run verify:logic:node` | **1298 checks** — parser, minimiser, K-maps, expressions, netlists, wire routing, factoring, Falstad geometry + combined-display semantics, standard patterns, Roman-letters picture pin, editor palette, determinism |
 | `bun run scripts/verify-circuitverse.ts` | **64,205 checks** — CircuitVerse geometry invariants (no dangling wire endpoints, no collinear net overlaps) |
 | `npm run verify:services` | **62 checks** — use cases with in-memory repositories, plain Node |
 | `npm run verify:boundaries` | Architecture layer checks — imports under `src/` must respect the dependency rules |
@@ -194,7 +194,7 @@ Stated plainly, because they are real:
 
 - **Production cloud sync is down on Vercel** (pre-existing, see [ADR-0007](./docs/decisions/0007-production-api-defect.md)): the serverless functions cannot open the SQLite file, so every REST call 500s and the client runs in its documented local-demo fallback. The UI is unaffected. The repository seam makes the eventual Turso/Neon adapter a small, isolated change.
 - **Layering is not a win on the shipped BCD table.** Multi-level factoring measures net-negative there (better in 1 of 15 segment × form cases, worse in 7) — Quine-McCluskey already flattens those covers. The UI says so instead of implying otherwise.
-- **The Falstad export** draws decoder logic plus a logic-output probe; it does **not** emit the seven-segment display element, and does not follow the on-screen style chips.
+- ~~**The Falstad export** lacks the display element~~ — fixed: it now emits ONE combined file (all decoders + shared switches + a real 157 display, semantically verified for every input combination) and follows the on-screen form and gate style.
 - **Verilog and CircuitVerse exports stay two-level SOP** even when the tab shows Layered or Universal.
 - **No cross-segment sharing** on the BCD table in the full-decoder Layered view.
 - **No timing/hazard analysis.** Gate layout is not persisted in a saved project. No pinch-zoom on touch.

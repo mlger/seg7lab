@@ -44,7 +44,7 @@ cp .env.example .env                          # DATABASE_URL=file:./db/custom.db
 npx prisma generate && npx prisma db push
 npm run dev                                   # port 3000 (dev.log via tee)
 
-npm run verify:logic:node                     # 592 pure-logic checks (plain Node)
+npm run verify:logic:node                     # 1298 pure-logic checks (plain Node)
 bun run scripts/verify-circuitverse.ts        # 64,205 .cv geometry checks (Bun only —
                                                #  TS parameter properties break Node strip-types)
 npm run verify:services                       # 62 service-layer checks (in-memory repos)
