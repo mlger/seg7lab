@@ -1,0 +1,82 @@
+# CI — the full verification gate suite from docs/VERIFICATION.md,
+# run on every PR into main (and on main itself after merge).
+# Mirrors the documented local commands in AGENTS.md / README.md —
+# nothing here is CI-only: every gate is runnable with `bun run <script>`.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Gates — logic, services, boundaries, API, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: file:./db/custom.db
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      # verify:services runs on Node with --experimental-strip-types (Node >= 22.6)
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      - name: Lint — eslint
+        run: bun run lint
+
+      - name: Typecheck — tsc --noEmit
+        run: bunx tsc --noEmit
+
+      - name: Logic suite (546 checks)
+        run: bun run verify:logic
+
+      - name: CircuitVerse geometry suite (64,205 checks)
+        run: bun run scripts/verify-circuitverse.ts
+
+      - name: Service layer suite (62 checks)
+        run: bun run verify:services
+
+      - name: Architecture boundaries (expect 0 violations)
+        run: bun run verify:boundaries
+
+      - name: Production build (standalone, typecheck included)
+        run: bun run build
+
+      # REST contract characterization: needs a fresh database and a running
+      # dev server, exactly as documented in scripts/verify-api.mjs.
+      - name: REST contract suite (70 checks, fresh db)
+        env:
+          API_BASE: http://localhost:3100
+        run: |
+          set -euo pipefail
+          rm -f db/custom.db
+          bunx prisma db push --accept-data-loss
+          bunx next dev -p 3100 > .ci-dev-server.log 2>&1 &
+          for i in $(seq 1 120); do
+            if curl -sf -o /dev/null "http://localhost:3100/api/presets"; then break; fi
+            sleep 1
+          done
+          curl -sf -o /dev/null "http://localhost:3100/api/presets" || {
+            echo "::error::dev server did not start on :3100"; tail -50 .ci-dev-server.log; exit 1;
+          }
+          node scripts/verify-api.mjs
+          pkill -f "next dev" 2>/dev/null || true
