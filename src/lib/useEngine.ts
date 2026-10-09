@@ -9,7 +9,7 @@ import { useSimulator, resolveTablePreset, activeFontGlyphs } from '@/lib/store'
 import { computeEngines, type SegmentEngineMap } from '@/logic/engine';
 import { matchesTablePreset } from '@/logic/presets';
 import { isSegmentLit } from '@/logic/decoder';
-import { toBits } from '@/utils/binary';
+import { toBits } from '@/logic/binary';
 import type {
   CustomFont,
   InvalidBehavior,

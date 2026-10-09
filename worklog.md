@@ -1031,3 +1031,21 @@ Work Log:
 Stage Summary:
 - The two toolbars can no longer drift apart (one source of truth per control group); the card is 126 lines smaller with the live-output block extracted; behavior byte-preserved per the diff protocol and confirmed by interactive E2E.
 - Not extracted (single-site, no duplication, left in place deliberately): mode/form/style chip groups, decoder stats strip, export menu — further splitting would be churn without a drift risk to remove.
+
+---
+Task ID: 29
+Agent: main (Z.ai Code)
+Task: Phase 3 — cross-cutting cleanups + boundary enforcement (P8, P9, P10, plus dead-comment hygiene).
+
+Work Log:
+- Moved getViewportTransform + ViewportTransform out of src/logic/circuitNetlist.ts (DOM-coupled: SVGSVGElement + getBoundingClientRect in a "no DOM" file) into new src/utils/svg-viewport.ts; LogicCircuitCard re-imported from there. Browser-verified zoom still works (104% → 135%).
+- Moved src/utils/binary.ts → src/logic/binary.ts: the boundary check caught logic/{kmap,circuitverse,expressions,minimizer} importing '@/utils/binary' — pure domain math (Gray code, popcount, parse helpers) that belongs with the domain. Updated 13 importers incl. the verify scripts (scripts import via the @/ alias too — caught by tsc).
+- Comment/doc fixes (behavior-preserving): standardPatternTable docstring + the builtin:standard7 preset description now describe the actual glyph-order windowing (the old text claimed storage at the chart's printed code — contradicted by the implementation); factorTermsWith stats comment now states the real caveat (shared-context intermediates overcount; `mine` is filtered; shared-path stats unused today); removed the vestigial no-op ternary in sopToString.
+- scripts/verify-boundaries.mjs: walks all src/** imports and asserts the layer matrix (logic imports nothing app-side + no framework packages + no DOM types; server never imports client code; routes never import Prisma; lib/components never import @/server). 61 imports checked, 0 violations.
+- eslint.config.mjs: three no-restricted-imports blocks mirroring the same rules (editor-visible), with messages pointing at ARCHITECTURE.md.
+- package.json: added verify:boundaries script.
+
+Stage Summary:
+- The logic layer is now provably pure (was 99% before — the two DOM/utils leaks are gone); the architecture is mechanically enforced (npm run verify:boundaries + eslint fail on violations).
+- verify-logic 546/546 and verify-circuitverse 64,205/64,205 after the moves — byte-level behavior proof for the logic layer; tsc 0, eslint 0; browser smoke OK.
+- One user-visible text change (deliberate, flagged): the builtin:standard7 preset description in the gallery now tells the truth about glyph-order windowing.

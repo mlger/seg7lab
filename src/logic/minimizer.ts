@@ -12,7 +12,7 @@
  * user-defined truth table.
  */
 import type { Implicant, MinimizeResult, PrimeInfo } from '@/types/simulator';
-import { popcount } from '@/utils/binary';
+import { popcount } from '@/logic/binary';
 
 export function implicantKey(imp: Implicant): string {
   return `${imp.bits}:${imp.mask}`;

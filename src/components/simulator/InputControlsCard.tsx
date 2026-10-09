@@ -8,7 +8,7 @@ import { useState } from 'react';
 import { ArrowDownToLine, ArrowUpToLine } from 'lucide-react';
 import { useSimulator } from '@/lib/store';
 import { useCurrentInput } from '@/lib/useEngine';
-import { parseBinary, parseDecimal, parseHex } from '@/utils/binary';
+import { parseBinary, parseDecimal, parseHex } from '@/logic/binary';
 import { ExplainBlock } from './ExplainBlock';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

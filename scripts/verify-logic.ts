@@ -51,7 +51,7 @@ import {
 } from '@/logic/wireRouting';
 import { factorTerms, factorCover, termKey, type FactoredForm } from '@/logic/factoring';
 import type { Term } from '@/types/simulator';
-import { grayAxisOrder } from '@/utils/binary';
+import { grayAxisOrder } from '@/logic/binary';
 import {
   SEGMENT_NAMES,
   type DisplaySettings,

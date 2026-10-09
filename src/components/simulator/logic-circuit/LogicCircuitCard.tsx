@@ -32,9 +32,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { SegmentSelector } from '../shared/SegmentSelector';
 import {
-  buildCircuit, evaluateCircuit, computeLevels, buildFactoredCircuit, getViewportTransform,
+  buildCircuit, evaluateCircuit, computeLevels, buildFactoredCircuit,
   type Circuit, type CNode, type GateStyle,
 } from '@/logic/circuitNetlist';
+import { getViewportTransform } from '@/utils/svg-viewport';
 import { factorCover } from '@/logic/factoring';
 import { buildFactoredDecoderCircuit } from '@/logic/factoredDecoderCircuit';
 import { buildDecoderCircuit, termGroupKey } from '@/logic/decoderCircuit';

@@ -35,7 +35,7 @@ import {
 import { buildDefaultProject, DEFAULT_DISPLAY_SETTINGS } from '@/logic/decoder';
 import { validateProject } from '@/logic/project';
 import { buildPresetTable, findBuiltinTablePreset } from '@/logic/presets';
-import { inputVarNames, maxvalue } from '@/utils/binary';
+import { inputVarNames, maxvalue } from '@/logic/binary';
 import type { SimulatorState } from './types';
 import { loadLibrary, persist, WORKSPACE_KEY } from './persistence';
 import {

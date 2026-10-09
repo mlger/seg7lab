@@ -6,7 +6,7 @@
 import type { ProjectData, SegmentName, Term } from '@/types/simulator';
 import { SEGMENT_NAMES } from '@/types/simulator';
 import type { SegmentEngineMap } from '@/logic/engine';
-import { inputVarNames, formatHex } from './binary';
+import { inputVarNames, formatHex } from '@/logic/binary';
 import { sopToString, posToString } from '@/logic/expressions';
 import { generateVerilog } from '@/logic/verilogGenerator';
 import { groupCellRects } from '@/logic/kmap';

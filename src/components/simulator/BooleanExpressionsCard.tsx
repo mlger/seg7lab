@@ -26,7 +26,7 @@ import {
 } from '@/types/simulator';
 import { mintermToTerm, maxtermToTerm } from '@/logic/expressions';
 import { parseBoolean, evalBool, astToAscii } from '@/logic/booleanParser';
-import { toBits } from '@/utils/binary';
+import { toBits } from '@/logic/binary';
 
 const FORM_LABELS: Record<ExpressionForm, string> = {
   sop: 'Simplified SOP',

@@ -28,7 +28,7 @@ import {
   parsePresetFile,
   presetDisplayMode,
 } from '@/logic/presets';
-import { maxvalue } from '@/utils/binary';
+import { maxvalue } from '@/logic/binary';
 import type { SimulatorState } from './types';
 import { persist, persistLibrary } from './persistence';
 import {

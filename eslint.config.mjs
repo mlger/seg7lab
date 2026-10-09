@@ -7,6 +7,39 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
+  // Layer rules (see docs/ARCHITECTURE.md + scripts/verify-boundaries.mjs,
+  // which is the authoritative check wired as `npm run verify:boundaries`).
+  files: ["src/logic/**"],
+  rules: {
+    "no-restricted-imports": ["error", {
+      patterns: [{
+        group: ["react", "react-dom", "react/*", "next", "next/*", "zustand", "@prisma/client"],
+        message: "The logic layer (domain) is framework-free — no React/Next/state/ORM imports.",
+      }],
+    }],
+  },
+}, {
+  files: ["src/app/api/**"],
+  rules: {
+    "no-restricted-imports": ["error", {
+      patterns: [{
+        group: ["@prisma/client", "@/server/db", "@/lib/db"],
+        message: "Routes are transport only — obtain persistence through the service layer (src/server/composition.ts).",
+      }],
+    }],
+  },
+}, {
+  files: ["src/lib/**", "src/components/**", "src/hooks/**", "src/app/**"],
+  ignores: ["src/app/api/**"],
+  rules: {
+    "no-restricted-imports": ["error", {
+      patterns: [{
+        group: ["@/server/*", "@/server"],
+        message: "Client code never imports the server layer — go through the REST API (src/lib/api-client.ts).",
+      }],
+    }],
+  },
+}, {
   rules: {
     // TypeScript rules
     "@typescript-eslint/no-explicit-any": "off",

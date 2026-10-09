@@ -25,7 +25,7 @@ import { presetTable } from '@/logic/truthTable';
 import { allSegmentsTable } from '@/logic/presets';
 import { FONT_GLYPHS } from '@/logic/font';
 import { implicantToSopTerm } from '@/logic/expressions';
-import { inputVarNames } from '@/utils/binary';
+import { inputVarNames } from '@/logic/binary';
 import {
   SEGMENT_NAMES,
   type InputWidth,
