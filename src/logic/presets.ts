@@ -210,7 +210,7 @@ export const BUILTIN_TABLE_PRESETS: TablePresetDef[] = [
     id: 'builtin:standard7',
     name: 'Standard 7-Segment Patterns',
     description:
-      "The canonical ASCII 7-segment character set: the chart's printed decimal code IS the segment bitmask (a=bit0 .. g=bit6), so every glyph is stored at that very code, and the table doubles as a reference.",
+      "The canonical ASCII 7-segment character set: the chart's printed decimal code IS the segment bitmask (a=bit0 .. g=bit6), so patterns are derived from the codes themselves. The chart needs 7 address bits, so the preset windows it by GLYPH ORDER onto the live code space (4-bit → first 16 glyphs, 5-bit → first 32).",
     category: 'Codes',
     inputBits: 4,
     generator: 'standard7',
@@ -313,13 +313,16 @@ export function buildPresetTable(
 /**
  * Standard 7-segment character patterns as a truth table.
  *
- * Each glyph from the canonical chart is stored at the chart's OWN printed
- * code, which is the segment bitmask itself (a=bit0 .. g=bit6). So the table is
- * a direct transcription of the reference rather than a re-derivation.
+ * The chart's printed decimal code IS the segment bitmask of each glyph
+ * (a=bit0 .. g=bit6) — patterns are DERIVED from those codes in
+ * ./standardPatterns (asserted by test), never read off the picture. Because
+ * those codes are 0..127 and need 7 address bits, the table below addresses
+ * by GLYPH ORDER windowed onto the live code space (4-bit → first 16 glyphs,
+ * 5-bit → first 32); see the inner comment at the fill loop.
  *
  * Two consequences worth knowing:
- *  - only the addresses the chart actually lists get a pattern; every other
- *    code is left as a don't-care so the minimizer is free to exploit them;
+ *  - only the windowed glyph positions get a pattern; every other row is left
+ *    as a don't-care so the minimizer is free to exploit them;
  *  - a code the chart prints more than once (e.g. 109 for both the digit 5 and
  *    the letter S) holds one pattern, which is correct — seven segments cannot
  *    distinguish those glyphs at all.

@@ -24,7 +24,7 @@ import type {
   SegmentOutput,
   Term,
 } from '@/types/simulator';
-import { grayAxisOrder, inputVarNames } from '@/utils/binary';
+import { grayAxisOrder, inputVarNames } from '@/logic/binary';
 import { implicantToSopTerm, implicantToPosTerm } from './expressions';
 
 export function buildKMap(

@@ -10,7 +10,7 @@ import type {
   Notation,
   Term,
 } from '@/types/simulator';
-import { inputVarNames } from '@/utils/binary';
+import { inputVarNames } from '@/logic/binary';
 
 const COMBINING_OVERLINE = '\u0305';
 
@@ -58,10 +58,7 @@ export function posTermToString(term: Term, notation: Notation): string {
 export function sopToString(terms: Term[], notation: Notation): string {
   if (terms.length === 0) return '0';
   if (terms.length === 1) return sopTermToString(terms[0], notation);
-  return terms.map((t) => {
-    const s = sopTermToString(t, notation);
-    return t.literals.length <= 1 ? s : s;
-  }).join(notation === 'ascii' ? ' + ' : ' + ');
+  return terms.map((t) => sopTermToString(t, notation)).join(notation === 'ascii' ? ' + ' : ' + ');
 }
 
 /** Full POS: product of sum terms. Empty product -> "1". */

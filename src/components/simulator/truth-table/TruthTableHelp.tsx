@@ -9,7 +9,7 @@
 import { ExplainBlock } from '../ExplainBlock';
 import type { SegmentEngineMap } from '@/logic/engine';
 import type { FontGlyph } from '@/logic/font';
-import { inputVarNames } from '@/utils/binary';
+import { inputVarNames } from '@/logic/binary';
 import type { InputWidth, SegmentName, TruthTable } from '@/types/simulator';
 
 interface TruthTableHelpProps {

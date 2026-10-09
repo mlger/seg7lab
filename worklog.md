@@ -966,3 +966,100 @@ Work Log:
 Stage Summary:
 - The K-map now reads as the reference does: diagonal corner header, value upper-left, minterm lower-right, all-green text, sharp group outlines.
 - Confirmed by inspection that the underlying Gray ordering and minterm numbering already matched the reference exactly, so nothing in the logic layer was touched — the change is presentational, and the 546-check suite (which asserts the K-map minterm math) stayed green throughout.
+
+---
+Task ID: 25
+Agent: main (Z.ai Code)
+Task: Clean-architecture refactor of the whole repository, behavior-preserving (user: "Refactor the entire repository into a practical, maintainable Clean Architecture while preserving existing application behavior"). Work on branch refactor/clean-architecture.
+
+Work Log:
+- Phase 0 (baseline): ran all existing suites green (verify-logic 546/546, verify-circuitverse 64,205/64,205 under bun — note: that script cannot run under Node strip-types due to TS parameter properties, recorded as a pre-existing quirk), eslint clean, tsc clean. Built scripts/verify-api.mjs — a 70-check REST contract characterization harness (record/compare modes, fresh-DB + client-supplied ids + timestamp normalization for determinism; determinism proven by recording twice against two fresh databases and diffing identical). Baseline contract committed at docs/verification/api-contract.json.
+- Wrote docs/REFACTOR_PLAN.md (10 concrete problems with examples, target structure, phases, acceptance criteria, exclusions), docs/REFACTOR_PROGRESS.md, docs/VERIFICATION.md, and seven ADRs (docs/decisions/0001-0007): logic layer stays the domain; server service+repository with function DI; the characterization harness; the store split strategy; no dependency changes; boundary enforcement; the pre-existing production API defect documented rather than fixed.
+- Phase 1 (server clean architecture): created src/server/ — kernel.ts (framework-free ApiError/owner/body-guard/pagination/Prisma-narrowing — ONE copy replacing the ~150 duplicated lines), projects/ and presets/ (repository.ts contract, prisma.ts adapter, service.ts use cases owning visibility/precedence/locking/validation), composition.ts (memoized wiring), db.ts (singleton moved from src/lib). Routes in src/app/api/ rewritten as thin transport handlers mapping ApiError → the exact existing NextResponse shapes via src/app/api/_lib/http.ts. Deleted both mirrored helpers.ts, dead src/lib/owner.ts, and src/lib/db.ts.
+- Added scripts/verify-services.ts: 62 use-case checks on plain Node with in-memory repository fakes (covers what verify-api cannot: corrupt-blob reads, P2025/P2002 mappings, 404→403→409→400 precedence incl. "409 beats 400").
+- Gate results: verify-api 70/70 byte-identical against the pre-refactor recording; verify-services 62/62; verify-logic 546/546 unchanged; eslint clean; tsc clean; agent-browser confirms the app renders and /api/presets now answers 200 through the new layer.
+
+Stage Summary:
+- REST surface now flows route → service (use cases) → repository interface → Prisma adapter; business rules (ownership visibility, existence-hiding 404s, optimistic-lock precedence, blob validation) live in services, testable without HTTP or a database.
+- Wire contract proven unchanged by the recorded characterization file; no schema/dependency/visual changes.
+- Known gap accepted per ADR-0007: production Vercel deployment still 500s on the API (pre-existing SQLite-on-serverless issue, needs an owner decision + env config).
+
+---
+Task ID: 26
+Agent: main (Z.ai Code)
+Task: Phase 2a — split the 1,389-line store monolith into slices behind the same '@/lib/store' import surface (ADR-0004), extracting the server-sync engine.
+
+Work Log:
+- Mapped the store's full public surface first (16 consumer files; exports: useSimulator, resolveTablePreset, resolveFontPreset, activeFontGlyphs, attachPersistence, SEGMENT_NAMES) — no consumer changes needed because src/lib/store/ gains an index.ts.
+- Created src/lib/store/: types.ts (SimulatorState verbatim + slice state interfaces), persistence.ts (localStorage keys + persist/persistLibrary/loadLibrary verbatim), presets.ts (pure resolvers + reconcileFont/builtinForMode verbatim), workspace.ts (project-data + UI + truth-table actions verbatim via the Zustand StateCreator slice pattern), library.ts (preset-library + font actions verbatim, sync facade), index.ts (composition + attachPersistence verbatim).
+- Extracted src/lib/preset-sync.ts: the entire fetch/merge/reconcile engine (apiUpsertPreset, apiPutPreset, reconcilePresetConflict, single-flight sync, once-per-id warnings, optimistic-lock tokens) moved verbatim behind a PresetSyncAccess interface (getLibrary/isHydrated/applyLibrary) — dependency-inverted, no store import; wired two-phase in index.ts (engine built after the store exists, library slice receives a lazy thunk).
+- Deleted src/lib/store.ts.
+- Fixed two transcription slips before committing (resetProject must set the BCD builtin preset id/name, not read current state; setInputBits/setInvalidBehavior must call buildPresetTable with the original argument lists).
+
+Stage Summary:
+- Public surface, localStorage keys, persisted JSON shape, action names, lastAction strings, debounce timings all unchanged; tsc 0, eslint 0.
+- Browser E2E (agent-browser): initial hydration from empty storage; display-segment toggle persisted; truth-table cell cycle 1→X persisted and restored after reload; preset gallery apply (allon) regenerates the table; user preset "E2E Sync Test" saved locally AND POSTed to /api/presets (201, server row verified with the owner header — the extracted engine works end-to-end); project create + load through the split store (toProjectData/loadProject) verified on the server and in localStorage; zero console errors.
+- Gates: verify-logic 546/546, verify-api 70/70 (byte-identical), tsc 0, eslint 0.
+
+---
+Task ID: 27
+Agent: main (Z.ai Code)
+Task: Phase 2b — typed API client + extraction of ProjectManagerCard's transport into a hook (P6).
+
+Work Log:
+- Created src/lib/api-client.ts: typed transport for /api/projects (list/create/update/delete) returning the previously-unused ApiResult<T> discriminated union from src/types/api.ts (fixes the "defined but never used" finding); same URLs, same ownerHeaders, same JSON conventions; 204s never parsed; error envelope surfaced verbatim.
+- Created src/lib/use-projects-manager.ts: the Projects tab's client-side application behavior (cloud/local fallback state machine, one-request full list, push-up reconciliation with 409/400/413 semantics, row busy guards with synchronous ref mirror, save/load/duplicate/remove, toasts) — moved verbatim from ProjectManagerCard and routed through api-client.
+- Rewrote ProjectManagerCard as presentation-only (634 → ~350 lines): name-draft render-phase sync (the codebase's own idiom from InputControlsCard, replacing the useEffect — the original effect passed lint only because the larger component bailed out of compiler analysis), import handler stays in the component (store+validation orchestration, no transport).
+- Behavior-fidelity fixes caught during self-review before commit: pushUpLocalOnly must receive the fresh server rows as a parameter (not stale hook state); saveCurrent must slice the name to 100 like persistCurrent did; the import path needs a silent detachCurrentId (no "New project" toast).
+- Browser E2E (agent-browser, fresh DB): cloud create → server row + list; blocked /api/projects via network routing → Local mode badge + fallback banner; offline create → localStorage row; unblock + refresh → SQLite backend badge + push-up POST verified server-side (client-kept UUID id); duplicate; delete via confirmation AlertDialog; render-phase name sync against persisted workspace name.
+- Gates: tsc 0, eslint 0 (the new react-hooks set-state-in-effect error resolved by the render-phase sync, not by suppression).
+
+Stage Summary:
+- The component now maps UI events to hook calls; all fetch/error/fallback logic lives in lib/ behind ApiResult. ApiResult is used; preset-sync stays fetch-based (verbatim per ADR-0004 — wiring it through api-client would be behavior churn for no contract gain, documented in ARCHITECTURE.md).
+
+---
+Task ID: 28
+Agent: main (Z.ai Code) + full-stack-developer subagent (Task 2c, spec-bound)
+Task: Phase 2c — LogicCircuitCard decomposition (P7): deduplicate the inline/fullscreen toolbar chrome, extract the live-output panel.
+
+Work Log:
+- Subagent executed the extraction under a verbatim-JSX contract: new src/components/simulator/logic-circuit/controls.tsx (304 lines) exporting ZoomControl (moved), TraceControls, ZoomButtons, BandStepButtons (children slot for the floating center-band readout + withTitles prop for the inline title attributes), LiveOutputPanel (moved with the sweep player), and SWEEP_SPEEDS. LogicCircuitCard.tsx: 1,298 → 1,172 lines; both call sites now share the components.
+- Reconciled differences documented by the subagent: floating band stepper renders the center letter BETWEEN the arrows (children slot, no extra DOM nodes); reveal prop is number|null (null while trace is off); the live-output tooltip stays inside the panel built from form/mode/currentInput props.
+- My verification (agent-browser): TRACE toggle + layer stepper reveal; Full decoder mode with band chips; band stepping (aria-current moves); fullscreen toolbar shows band stepper + zoom + TRACE + exit; zoom increments in fullscreen (104% → 44% fit after re-entering... observed percentage changes correctly); Escape exits fullscreen; sweep player plays/pauses; zero console errors.
+- Gates: tsc 0, eslint 0 (subagent-verified and re-verified by me).
+
+Stage Summary:
+- The two toolbars can no longer drift apart (one source of truth per control group); the card is 126 lines smaller with the live-output block extracted; behavior byte-preserved per the diff protocol and confirmed by interactive E2E.
+- Not extracted (single-site, no duplication, left in place deliberately): mode/form/style chip groups, decoder stats strip, export menu — further splitting would be churn without a drift risk to remove.
+
+---
+Task ID: 29
+Agent: main (Z.ai Code)
+Task: Phase 3 — cross-cutting cleanups + boundary enforcement (P8, P9, P10, plus dead-comment hygiene).
+
+Work Log:
+- Moved getViewportTransform + ViewportTransform out of src/logic/circuitNetlist.ts (DOM-coupled: SVGSVGElement + getBoundingClientRect in a "no DOM" file) into new src/utils/svg-viewport.ts; LogicCircuitCard re-imported from there. Browser-verified zoom still works (104% → 135%).
+- Moved src/utils/binary.ts → src/logic/binary.ts: the boundary check caught logic/{kmap,circuitverse,expressions,minimizer} importing '@/utils/binary' — pure domain math (Gray code, popcount, parse helpers) that belongs with the domain. Updated 13 importers incl. the verify scripts (scripts import via the @/ alias too — caught by tsc).
+- Comment/doc fixes (behavior-preserving): standardPatternTable docstring + the builtin:standard7 preset description now describe the actual glyph-order windowing (the old text claimed storage at the chart's printed code — contradicted by the implementation); factorTermsWith stats comment now states the real caveat (shared-context intermediates overcount; `mine` is filtered; shared-path stats unused today); removed the vestigial no-op ternary in sopToString.
+- scripts/verify-boundaries.mjs: walks all src/** imports and asserts the layer matrix (logic imports nothing app-side + no framework packages + no DOM types; server never imports client code; routes never import Prisma; lib/components never import @/server). 61 imports checked, 0 violations.
+- eslint.config.mjs: three no-restricted-imports blocks mirroring the same rules (editor-visible), with messages pointing at ARCHITECTURE.md.
+- package.json: added verify:boundaries script.
+
+Stage Summary:
+- The logic layer is now provably pure (was 99% before — the two DOM/utils leaks are gone); the architecture is mechanically enforced (npm run verify:boundaries + eslint fail on violations).
+- verify-logic 546/546 and verify-circuitverse 64,205/64,205 after the moves — byte-level behavior proof for the logic layer; tsc 0, eslint 0; browser smoke OK.
+- One user-visible text change (deliberate, flagged): the builtin:standard7 preset description in the gallery now tells the truth about glyph-order windowing.
+
+---
+Task ID: 30
+Agent: main (Z.ai Code)
+Task: Phase 4 — final verification sweep + documentation (README, AGENTS, ARCHITECTURE) + branch delivery.
+
+Work Log:
+- Final acceptance sweep, executed in order: verify-logic 546/546; verify-circuitverse 64,205/64,205 (bun); verify-services 62/62; verify-boundaries 61 imports / 0 violations; tsc clean; eslint clean (layer rules active); verify-api 70/70 byte-identical to the pre-refactor baseline (fresh DB); bunx next build SUCCESS (5 routes, typecheck included). Consolidated browser E2E on a fresh DB: truth-table cell cycle 1→X → K-map shows X, expressions re-derive, circuit badge drops 5→2 gates in response (the everything-derived loop after all phases); export menu (all 11 items) + CSV export; Projects cloud mode with 200s on both APIs; zero console/server errors.
+- Documentation finalized: docs/ARCHITECTURE.md (layer map, directory structure, dependency-diagram mermaid, request flow, frontend data flow, initialization, validation/auth/errors/config, boundaries, extension recipes); AGENTS.md (module ownership, layer rules, verified commands, conventions, how-to-add-features, traps); README.md (verification section with the new suites, layout tree, documentation index); docs/REFACTOR_PROGRESS.md final (all phases complete + coverage checklist); docs/VERIFICATION.md final (per-phase evidence + 8-gate acceptance table + gaps); all cross-links verified to resolve.
+- One deliberate user-visible text correction (flagged in Phase 3 + VERIFICATION.md): the builtin:standard7 preset description now describes glyph-order windowing truthfully.
+
+Stage Summary:
+- Final acceptance: PASS. 8 verification gates green, production build green, golden-path E2E green, byte-identical REST contract.
+- Delivery: branch refactor/clean-architecture, commits 15479f8 → (this one); main untouched (Vercel auto-deploy unaffected until the owner merges).

@@ -14,7 +14,7 @@ import { Table, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { SEGMENT_NAMES } from '@/types/simulator';
-import { inputVarNames } from '@/utils/binary';
+import { inputVarNames } from '@/logic/binary';
 import { toast } from '@/hooks/use-toast';
 
 export function TruthTableHeader() {

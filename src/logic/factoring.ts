@@ -411,9 +411,15 @@ export function factorTermsWith(terms: Term[], ctx: FactorContext): FactoredForm
   }
   const multiLevelDepth = listDepth(outputTerms, depthOf);
 
-  /* Stats describe THIS expression. Gates are counted per distinct signal it
-     actually uses, so a signal shared with another expression is not double
-     counted here. */
+  /* Stats describe THIS expression when the context is private (factorTerms
+     creates a fresh one per call — the single-segment path the UI uses).
+     CAVEAT: with a SHARED context (factorTermsWith via
+     factoredDecoderCircuit), `intermediates` is the whole shared signal
+     table, so multiLevelGates / multiLevelLiterals / stats.intermediates
+     count other expressions' signals too. `mine` below IS filtered to this
+     expression. The shared-path stats are currently unused (the decoder
+     view computes its own gate counts) — treat them as unreliable there
+     until this is split into per-expression accumulation. */
   const usedSignals = new Set<string>();
   const collect = (ts: Term[]): void => {
     for (const t of ts) for (const l of t.literals) if (depthOf.has(l.name)) usedSignals.add(l.name);

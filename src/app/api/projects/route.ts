@@ -1,15 +1,6 @@
-import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import {
-  jsonError,
-  ownerFromRequest,
-  parseLimit,
-  parseOffset,
-  prismaErrorCode,
-  readJsonBody,
-  toPayload,
-  validateProjectCreate,
-} from "./helpers";
+import { getProjectService } from "@/server/composition";
+import { ApiError, ownerFromRequest, parseLimit, parseOffset, parseJsonBody } from "@/server/kernel";
+import { apiErrorResponse, jsonError, ok } from "../_lib/http";
 
 export const dynamic = "force-dynamic";
 
@@ -17,12 +8,11 @@ export const dynamic = "force-dynamic";
  * GET /api/projects — paginated list, newest first.
  *
  * Query params: `full` ("1" includes the parsed `data` blob), `limit`
- * (1..200, default 100), `offset` (>= 0, default 0). Slim mode selects
- * WITHOUT the data column so listing never loads megabytes of blobs.
+ * (1..200, default 100), `offset` (>= 0, default 0).
  *
- * Ownership: rows with ownerId = null are shared/legacy and visible to
- * everyone; owned rows are visible only when the request carries the
- * matching `x-sevenseg-owner` header.
+ * Transport only: parse query → resolve owner → call the use case → map the
+ * result. The visibility rule (shared rows + the requesting owner's rows)
+ * lives in the service; slim mode never loads the blob column.
  */
 export async function GET(request: Request) {
   try {
@@ -33,33 +23,8 @@ export async function GET(request: Request) {
     const offset = parseOffset(searchParams.get("offset"));
 
     const owner = ownerFromRequest(request);
-    const where = {
-      OR: [{ ownerId: null }, ...(owner !== null ? [{ ownerId: owner }] : [])],
-    };
-
-    const projects = full
-      ? await db.project.findMany({
-          where,
-          orderBy: { updatedAt: "desc" },
-          take: limit,
-          skip: offset,
-        })
-      : await db.project.findMany({
-          where,
-          select: {
-            id: true,
-            name: true,
-            inputBits: true,
-            ownerId: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-          orderBy: { updatedAt: "desc" },
-          take: limit,
-          skip: offset,
-        });
-
-    return NextResponse.json(projects.map((p) => toPayload(p, full)));
+    const projects = await getProjectService().list(owner, { full, limit, offset });
+    return ok(projects);
   } catch (err) {
     console.error("GET /api/projects failed:", err);
     return jsonError("Internal server error", 500);
@@ -71,39 +36,20 @@ export async function GET(request: Request) {
  *
  * Body: { name (1..100), inputBits (4|5), data (object, validated via
  * validateProject), id? (optional client-supplied, for offline push-up) }.
- * The stored blob is the canonicalized form from validateProject. The owner
- * identity is taken from the `x-sevenseg-owner` header (null when absent).
+ * The stored blob is the canonicalized form from the service's validator;
+ * owner identity comes from the `x-sevenseg-owner` header (null when absent).
+ * Client-supplied id colliding with an existing row → 409.
  */
 export async function POST(request: Request) {
   try {
-    const bodyResult = await readJsonBody(request);
-    if (!bodyResult.ok) return bodyResult.response;
-
-    const result = validateProjectCreate(bodyResult.body);
-    if (!result.ok) {
-      return jsonError(result.error, 400, result.errors);
-    }
+    const bodyResult = await parseJsonBody(request);
+    if (!bodyResult.ok) return apiErrorResponse(bodyResult.error);
 
     const owner = ownerFromRequest(request);
-    try {
-      const project = await db.project.create({
-        data: {
-          ...(result.fields.id !== undefined ? { id: result.fields.id } : {}),
-          name: result.fields.name,
-          inputBits: result.fields.inputBits,
-          data: result.fields.data,
-          ...(owner !== null ? { ownerId: owner } : {}),
-        },
-      });
-      return NextResponse.json(toPayload(project, true), { status: 201 });
-    } catch (err) {
-      // Client-supplied id colliding with an existing row → 409, not 500.
-      if (prismaErrorCode(err) === "P2002") {
-        return jsonError("id already exists", 409);
-      }
-      throw err;
-    }
+    const project = await getProjectService().create(owner, bodyResult.body);
+    return ok(project, 201);
   } catch (err) {
+    if (err instanceof ApiError) return apiErrorResponse(err);
     console.error("POST /api/projects failed:", err);
     return jsonError("Internal server error", 500);
   }

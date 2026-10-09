@@ -59,7 +59,7 @@ import {
   type SegmentName,
   type Term,
 } from '@/types/simulator';
-import { inputVarNames } from '@/utils/binary';
+import { inputVarNames } from '@/logic/binary';
 import { implicantToSopTerm } from './expressions';
 import type { SegmentEngineMap } from './engine';
 
