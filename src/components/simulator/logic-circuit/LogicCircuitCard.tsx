@@ -8,17 +8,16 @@
  * which survive tab switches while this card stays mounted), fit-to-content,
  * fullscreen, pointer + keyboard interaction math, the input auto-sweep
  * player, the level trace (propagation step-through), live signal evaluation
- * and the circuit image exports. The SVG canvas, gate inspector and gate
- * reference live in sibling files; the pure netlist builders/evaluators live
- * in @/logic/circuitNetlist and @/logic/decoderCircuit.
+ * and the circuit image exports. The SVG canvas, gate inspector, gate
+ * reference and the shared toolbar chrome (zoom / trace / band-stepper /
+ * LIVE OUTPUT panel) live in sibling files; the pure netlist builders/
+ * evaluators live in @/logic/circuitNetlist and @/logic/decoderCircuit.
  */
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  CircuitBoard, ZoomIn, ZoomOut, Maximize, RotateCcw, MousePointerClick,
-  Play, Pause, Layers, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
-  Download, Expand, Shrink,
+  CircuitBoard, RotateCcw, MousePointerClick, Download, Expand, Shrink,
 } from 'lucide-react';
 import { useSimulator } from '@/lib/store';
 import { useEngines } from '@/lib/useEngine';
@@ -32,7 +31,6 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SegmentSelector } from '../shared/SegmentSelector';
-import { SevenSegmentSvg } from '../SevenSegmentDisplay';
 import {
   buildCircuit, evaluateCircuit, computeLevels, buildFactoredCircuit, getViewportTransform,
   type Circuit, type CNode, type GateStyle,
@@ -51,13 +49,14 @@ import {
 import { CircuitCanvas, type NodeAccent } from './CircuitCanvas';
 import { GateInspector } from './GateInspector';
 import { GateReference } from './GateReference';
+import {
+  BandStepButtons, LiveOutputPanel, SWEEP_SPEEDS, TraceControls, ZoomButtons,
+} from './controls';
 
 const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 6;
 /** Band jumps fit the band but never zoom in past this — small bands stay readable. */
 const BAND_JUMP_MAX_ZOOM = 1.6;
-/** Zoom steps offered in the toolbar preset menu. */
-const ZOOM_PRESETS = [0.5, 1, 2] as const;
 const GATE_TYPES = ['and', 'or', 'not', 'xor', 'nand', 'nor', 'xnor'] as const;
 
 const FORM_CHIPS: { form: ExpressionForm; label: string; title: string }[] = [
@@ -65,12 +64,6 @@ const FORM_CHIPS: { form: ExpressionForm; label: string; title: string }[] = [
   { form: 'pos', label: 'POS', title: 'Simplified POS (minimized sum terms)' },
   { form: 'csop', label: 'Σm', title: 'Canonical SOP — one full minterm per 1-row (unminimized)' },
   { form: 'cpos', label: 'ΠM', title: 'Canonical POS — one full maxterm per 0-row (unminimized)' },
-];
-
-const SWEEP_SPEEDS = [
-  { ms: 500, label: '1×' },
-  { ms: 250, label: '2×' },
-  { ms: 1000, label: '½×' },
 ];
 
 /** Implementation style chips: basic AND/OR, or the De Morgan dual network
@@ -96,42 +89,6 @@ const STYLE_CHIPS: { style: GateStyle; label: string; title: string; unavailable
     title: 'Layered — arrange the same gates in LAYERS: shared sub-expressions are built once and feed every gate that needs them.',
   },
 ];
-
-/**
- * Zoom readout + preset menu (Fit / 50 / 100 / 200 %). Shared by the card
- * toolbar and the fullscreen overlay so the two cannot drift apart.
- */
-function ZoomControl({
-  zoom,
-  onFit,
-  onPreset,
-}: {
-  zoom: number;
-  onFit: () => void;
-  onPreset: (z: number) => void;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          size="sm" variant="outline" className="h-7 min-w-[52px] px-1 font-mono text-[10px]"
-          title="Zoom level — pick a preset, or double-click to fit"
-          aria-label={`Zoom ${Math.round(zoom * 100)} percent. Open zoom presets.`}
-        >
-          {Math.round(zoom * 100)}%
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={onFit}>Fit to panel</DropdownMenuItem>
-        {ZOOM_PRESETS.map((z) => (
-          <DropdownMenuItem key={z} onSelect={() => onPreset(z)}>
-            {z * 100}%
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
 
 export function LogicCircuitCard() {
   const activeSegment = useSimulator((s) => s.activeSegment);
@@ -752,6 +709,16 @@ export function LogicCircuitCard() {
     : (values.get(`o-${activeSegment}`) ?? 0);
   const reveal = trace ? Math.min(revealLevel, maxLevel) : null;
 
+  /**
+   * TRACE layer stepper, dispatched through the single (dir) callback the
+   * shared TraceControls component calls — with the same Math.max/Math.min
+   * clamps the two inline steppers used before the extraction.
+   */
+  const stepReveal = useCallback((delta: 1 | -1) => {
+    if (delta === -1) setRevealLevel((l) => Math.max(0, l - 1));
+    else setRevealLevel((l) => Math.min(maxLevel, l + 1));
+  }, [maxLevel]);
+
   /* stepper bounds (decoder mode) — from the band in view, or the active chip */
   const stepFrom = decoderView && mode === 'decoder'
     ? (centerBandIdx >= 0 ? centerBandIdx : decoderView.bands.findIndex((b) => b.seg === activeSegment))
@@ -862,44 +829,20 @@ export function LogicCircuitCard() {
             <Badge variant="secondary" className="font-mono text-[10px]">
               {formLabel}{styleLabel} · {gateCount} gates · {maxLevel + 1} layers{tradeoffNote}
             </Badge>
-            {/* level trace */}
-            <Button
-              size="sm" variant={trace ? 'secondary' : 'outline'}
-              className="h-7 gap-1 px-2 text-[11px]"
-              onClick={() => setTrace((t) => !t)}
-              aria-pressed={trace}
-              title="Layer trace — reveal the circuit one logic LAYER at a time (propagation order)"
-            >
-              <Layers className="h-3.5 w-3.5" aria-hidden /> TRACE
-            </Button>
-            {trace && (
-              <div className="flex items-center gap-0.5" role="group" aria-label="Revealed logic layer">
-                <Button size="sm" variant="outline" className="h-7 px-1.5" onClick={() => setRevealLevel((l) => Math.max(0, l - 1))} aria-label="Hide one level">
-                  <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
-                </Button>
-                <span className="min-w-[62px] text-center font-mono text-[10px] text-muted-foreground" aria-live="polite">
-                  layer {reveal}/{maxLevel}
-                </span>
-                <Button size="sm" variant="outline" className="h-7 px-1.5" onClick={() => setRevealLevel((l) => Math.min(maxLevel, l + 1))} aria-label="Reveal one more level">
-                  <ChevronRight className="h-3.5 w-3.5" aria-hidden />
-                </Button>
-              </div>
-            )}
-            {/* zoom / fit / reset / expand / export */}
-            <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => zoomStep(1)} aria-label="Zoom in">
-              <ZoomIn className="h-3.5 w-3.5" aria-hidden />
-            </Button>
-            <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => zoomStep(-1)} aria-label="Zoom out">
-              <ZoomOut className="h-3.5 w-3.5" aria-hidden />
-            </Button>
-            <ZoomControl
-              zoom={zoom}
-              onFit={fitView}
-              onPreset={zoomTo}
+            <TraceControls
+              trace={trace}
+              onToggleTrace={() => setTrace((t) => !t)}
+              reveal={reveal}
+              maxLevel={maxLevel}
+              onStepReveal={stepReveal}
             />
-            <Button size="sm" variant="outline" className="h-7 px-2" onClick={fitView} aria-label="Fit circuit to view">
-              <Maximize className="h-3.5 w-3.5" aria-hidden />
-            </Button>
+            {/* zoom / fit / reset / expand / export */}
+            <ZoomButtons
+              zoom={zoom}
+              onZoomStep={zoomStep}
+              onFit={fitView}
+              onZoomPreset={zoomTo}
+            />
             <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => { setOverrides({}); setPan({ x: 0, y: 0 }); setZoom(1); }} aria-label="Reset gate layout">
               <RotateCcw className="h-3.5 w-3.5" aria-hidden />
             </Button>
@@ -935,22 +878,12 @@ export function LogicCircuitCard() {
           <div className="flex flex-wrap items-center gap-1.5">
             {/* band stepper — sequential tour of the decoder */}
             <div className="flex items-center gap-0.5" role="group" aria-label="Step between segment bands">
-              <Button
-                size="sm" variant="outline" className="h-7 px-1.5"
-                onClick={() => stepBand(-1)} disabled={atFirst}
-                aria-label="Previous segment band (Page Up)"
-                title="Previous band (Page Up)"
-              >
-                <ChevronUp className="h-3.5 w-3.5" aria-hidden />
-              </Button>
-              <Button
-                size="sm" variant="outline" className="h-7 px-1.5"
-                onClick={() => stepBand(1)} disabled={atLast}
-                aria-label="Next segment band (Page Down)"
-                title="Next band (Page Down)"
-              >
-                <ChevronDown className="h-3.5 w-3.5" aria-hidden />
-              </Button>
+              <BandStepButtons
+                atFirst={atFirst}
+                atLast={atLast}
+                onStep={stepBand}
+                withTitles
+              />
             </div>
             <Badge variant="secondary" className="font-mono text-[10px]">
               8 segments · {gateCount} gates · {circuit.wires.length} wires · {maxLevel + 1} layers
@@ -998,57 +931,21 @@ export function LogicCircuitCard() {
               label="Circuit segment selector"
             />
           </div>
-          <div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-3 py-2">
-            <SevenSegmentSvg
-              outputs={liveOutputs}
-              settings={liveSettings}
-              interactive
-              onSegmentClick={selectSegment}
-              className="h-24 w-auto"
-              clickHint="click to view this segment's circuit"
-              title={`Live output — logic levels every segment's ${form.toUpperCase()} circuit drives for input m${currentInput}. Click a segment to ${mode === 'decoder' ? 'jump to its band' : 'view its circuit'}.`}
-            />
-            <div className="flex flex-col items-start gap-1.5">
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-medium tracking-widest text-muted-foreground">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" aria-hidden />
-                LIVE OUTPUT
-              </span>
-              <span className="font-mono text-[11px] text-muted-foreground">
-                m{currentInput} · {currentInput.toString(2).padStart(inputBits, '0')}
-              </span>
-              <div className="flex items-center gap-2">
-                <Badge
-                  className={cn(
-                    'font-mono text-[11px]',
-                    outValue === 1
-                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                      : 'bg-muted text-muted-foreground',
-                  )}
-                >
-                  {activeSegment} = {outValue}
-                </Badge>
-                {/* input auto-sweep */}
-                <Button
-                  size="sm" variant={playing ? 'secondary' : 'outline'}
-                  className="h-6 px-1.5"
-                  onClick={() => setPlaying((p) => !p)}
-                  aria-pressed={playing}
-                  aria-label={playing ? 'Pause input sweep' : 'Play input sweep (cycles all input codes)'}
-                  title="Auto-sweep: cycles the input so every circuit, map and row lights up in sequence"
-                >
-                  {playing ? <Pause className="h-3 w-3" aria-hidden /> : <Play className="h-3 w-3" aria-hidden />}
-                </Button>
-                <Button
-                  size="sm" variant="outline" className="h-6 px-1.5 font-mono text-[10px]"
-                  onClick={() => setSweepIdx((i) => (i + 1) % SWEEP_SPEEDS.length)}
-                  aria-label={`Sweep speed ${SWEEP_SPEEDS[sweepIdx].label} — click to change`}
-                  title="Sweep speed"
-                >
-                  {SWEEP_SPEEDS[sweepIdx].label}
-                </Button>
-              </div>
-            </div>
-          </div>
+          <LiveOutputPanel
+            liveOutputs={liveOutputs}
+            liveSettings={liveSettings}
+            onSegmentClick={selectSegment}
+            form={form}
+            mode={mode}
+            currentInput={currentInput}
+            inputBits={inputBits}
+            outValue={outValue}
+            activeSegment={activeSegment}
+            playing={playing}
+            onTogglePlaying={() => setPlaying((p) => !p)}
+            sweepIdx={sweepIdx}
+            onCycleSweepSpeed={() => setSweepIdx((i) => (i + 1) % SWEEP_SPEEDS.length)}
+          />
         </div>
 
         {/* SVG canvas (fullscreen overlays the whole viewport) */}
@@ -1086,54 +983,31 @@ export function LogicCircuitCard() {
             <div className="absolute right-4 top-4 flex max-w-[calc(100%-2rem)] flex-wrap items-center justify-end gap-1 rounded-lg border bg-background/95 p-1 shadow-sm">
               {mode === 'decoder' && decoderView && (
                 <>
-                  <Button size="sm" variant="outline" className="h-7 px-1.5" onClick={() => stepBand(-1)} disabled={atFirst} aria-label="Previous segment band (Page Up)">
-                    <ChevronUp className="h-3.5 w-3.5" aria-hidden />
-                  </Button>
-                  <span className="min-w-[26px] text-center font-mono text-[10px] text-muted-foreground" aria-live="polite">
-                    {centerBandIdx >= 0 ? decoderView.bands[centerBandIdx].seg : '—'}
-                  </span>
-                  <Button size="sm" variant="outline" className="h-7 px-1.5" onClick={() => stepBand(1)} disabled={atLast} aria-label="Next segment band (Page Down)">
-                    <ChevronDown className="h-3.5 w-3.5" aria-hidden />
-                  </Button>
+                  <BandStepButtons
+                    atFirst={atFirst}
+                    atLast={atLast}
+                    onStep={stepBand}
+                  >
+                    <span className="min-w-[26px] text-center font-mono text-[10px] text-muted-foreground" aria-live="polite">
+                      {centerBandIdx >= 0 ? decoderView.bands[centerBandIdx].seg : '—'}
+                    </span>
+                  </BandStepButtons>
                   <span className="mx-1 h-4 w-px bg-border" aria-hidden />
                 </>
               )}
-              <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => zoomStep(1)} aria-label="Zoom in">
-                <ZoomIn className="h-3.5 w-3.5" aria-hidden />
-              </Button>
-              <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => zoomStep(-1)} aria-label="Zoom out">
-                <ZoomOut className="h-3.5 w-3.5" aria-hidden />
-              </Button>
-              <ZoomControl
+              <ZoomButtons
                 zoom={zoom}
+                onZoomStep={zoomStep}
                 onFit={fitView}
-                onPreset={zoomTo}
+                onZoomPreset={zoomTo}
               />
-              <Button size="sm" variant="outline" className="h-7 px-2" onClick={fitView} aria-label="Fit circuit to view">
-                <Maximize className="h-3.5 w-3.5" aria-hidden />
-              </Button>
-              <Button
-                size="sm" variant={trace ? 'secondary' : 'outline'}
-                className="h-7 gap-1 px-2 text-[11px]"
-                onClick={() => setTrace((t) => !t)}
-                aria-pressed={trace}
-                title="Layer trace — reveal the circuit one logic LAYER at a time (propagation order)"
-              >
-                <Layers className="h-3.5 w-3.5" aria-hidden /> TRACE
-              </Button>
-              {trace && (
-                <div className="flex items-center gap-0.5" role="group" aria-label="Revealed logic layer">
-                  <Button size="sm" variant="outline" className="h-7 px-1.5" onClick={() => setRevealLevel((l) => Math.max(0, l - 1))} aria-label="Hide one level">
-                    <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
-                  </Button>
-                  <span className="min-w-[62px] text-center font-mono text-[10px] text-muted-foreground" aria-live="polite">
-                    layer {reveal}/{maxLevel}
-                  </span>
-                  <Button size="sm" variant="outline" className="h-7 px-1.5" onClick={() => setRevealLevel((l) => Math.min(maxLevel, l + 1))} aria-label="Reveal one more level">
-                    <ChevronRight className="h-3.5 w-3.5" aria-hidden />
-                  </Button>
-                </div>
-              )}
+              <TraceControls
+                trace={trace}
+                onToggleTrace={() => setTrace((t) => !t)}
+                reveal={reveal}
+                maxLevel={maxLevel}
+                onStepReveal={stepReveal}
+              />
               <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => setExpanded(false)} aria-label="Exit fullscreen (Escape)">
                 <Shrink className="h-3.5 w-3.5" aria-hidden />
               </Button>

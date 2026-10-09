@@ -1016,3 +1016,18 @@ Work Log:
 
 Stage Summary:
 - The component now maps UI events to hook calls; all fetch/error/fallback logic lives in lib/ behind ApiResult. ApiResult is used; preset-sync stays fetch-based (verbatim per ADR-0004 — wiring it through api-client would be behavior churn for no contract gain, documented in ARCHITECTURE.md).
+
+---
+Task ID: 28
+Agent: main (Z.ai Code) + full-stack-developer subagent (Task 2c, spec-bound)
+Task: Phase 2c — LogicCircuitCard decomposition (P7): deduplicate the inline/fullscreen toolbar chrome, extract the live-output panel.
+
+Work Log:
+- Subagent executed the extraction under a verbatim-JSX contract: new src/components/simulator/logic-circuit/controls.tsx (304 lines) exporting ZoomControl (moved), TraceControls, ZoomButtons, BandStepButtons (children slot for the floating center-band readout + withTitles prop for the inline title attributes), LiveOutputPanel (moved with the sweep player), and SWEEP_SPEEDS. LogicCircuitCard.tsx: 1,298 → 1,172 lines; both call sites now share the components.
+- Reconciled differences documented by the subagent: floating band stepper renders the center letter BETWEEN the arrows (children slot, no extra DOM nodes); reveal prop is number|null (null while trace is off); the live-output tooltip stays inside the panel built from form/mode/currentInput props.
+- My verification (agent-browser): TRACE toggle + layer stepper reveal; Full decoder mode with band chips; band stepping (aria-current moves); fullscreen toolbar shows band stepper + zoom + TRACE + exit; zoom increments in fullscreen (104% → 44% fit after re-entering... observed percentage changes correctly); Escape exits fullscreen; sweep player plays/pauses; zero console errors.
+- Gates: tsc 0, eslint 0 (subagent-verified and re-verified by me).
+
+Stage Summary:
+- The two toolbars can no longer drift apart (one source of truth per control group); the card is 126 lines smaller with the live-output block extracted; behavior byte-preserved per the diff protocol and confirmed by interactive E2E.
+- Not extracted (single-site, no duplication, left in place deliberately): mode/form/style chip groups, decoder stats strip, export menu — further splitting would be churn without a drift risk to remove.
