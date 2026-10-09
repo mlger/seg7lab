@@ -3,6 +3,13 @@
  * Click a slot to open the editor — toggling segments writes directly into
  * the truth table (single source of truth), so K-maps / expressions / circuit
  * update instantly. Includes the invalid-BCD behavior controls.
+ *
+ * The dialog's "Apply a standard pattern" section offers two families: the
+ * hex quick row (0-9 A b C d E F + Blank + All X) and, below it, the full
+ * Roman-letters chart from the standard-pattern picture (grouped Uppercase /
+ * Lowercase / Punctuation, the six hex twins deduplicated — see
+ * CHARACTER_EDITOR_ROMAN). Whichever pattern matches the current row is
+ * highlighted.
  */
 'use client';
 
@@ -23,8 +30,13 @@ import { cn } from '@/lib/utils';
 import { SEGMENT_NAMES, type SegmentName } from '@/types/simulator';
 import { HEX_PATTERNS, valueToChar, patternToChar, blankRowX, dontCareRowX } from '@/logic/truthTable';
 import { fontCharAt } from '@/logic/font';
+import { CHARACTER_EDITOR_ROMAN } from '@/logic/standardPatterns';
 
 const PRESET_CHARS = Object.keys(HEX_PATTERNS);
+
+/** Accent for the pattern button whose pattern is currently applied. */
+const ACTIVE_PATTERN_CLS =
+  'border-emerald-500/60 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400';
 
 export function CustomCharacterCard() {
   const table = useSimulator((s) => s.truthTable);
@@ -46,6 +58,12 @@ export function CustomCharacterCard() {
   const glyphs = activeFontGlyphs(customFont, activeFontId);
 
   const editingRow = editing !== null ? table.rows.find((r) => r.input === editing) : null;
+  const liveOutputs = editingRow?.outputs;
+  /** True when the edited row's outputs are exactly this 0/1 pattern. */
+  const patternIsLive = (p: Record<SegmentName, 0 | 1>): boolean =>
+    liveOutputs !== undefined && SEGMENT_NAMES.every((s) => liveOutputs[s] === p[s]);
+  const rowIsBlank = liveOutputs !== undefined && SEGMENT_NAMES.every((s) => liveOutputs[s] === 0);
+  const rowIsAllX = liveOutputs !== undefined && SEGMENT_NAMES.every((s) => liveOutputs[s] === 'X');
   const varNames = useSimulator((s) => s.variableNames);
   const invalidFrom = displayMode === 'hex' && inputBits === 5 ? 16 : 10;
 
@@ -176,9 +194,13 @@ export function CustomCharacterCard() {
                         key={c}
                         size="sm"
                         variant="outline"
-                        className="h-8 w-8 p-0 font-mono"
+                        className={cn(
+                          'h-8 w-8 p-0 font-mono',
+                          patternIsLive(HEX_PATTERNS[c]) && ACTIVE_PATTERN_CLS,
+                        )}
                         onClick={() => setRowPattern(editing!, { ...HEX_PATTERNS[c] })}
                         aria-label={`Apply pattern for character ${c}`}
+                        aria-pressed={patternIsLive(HEX_PATTERNS[c])}
                       >
                         {c}
                       </Button>
@@ -186,19 +208,68 @@ export function CustomCharacterCard() {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-8 px-2 text-xs"
+                      className={cn('h-8 px-2 text-xs', rowIsBlank && ACTIVE_PATTERN_CLS)}
                       onClick={() => setRowPattern(editing!, blankRowX())}
+                      aria-pressed={rowIsBlank}
                     >
                       Blank
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-8 px-2 text-xs"
+                      className={cn('h-8 px-2 text-xs', rowIsAllX && ACTIVE_PATTERN_CLS)}
                       onClick={() => setRowPattern(editing!, dontCareRowX())}
+                      aria-pressed={rowIsAllX}
                     >
                       All X
                     </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">
+                    Roman letters chart
+                    <span className="ml-1.5 font-normal text-muted-foreground/70">
+                      · the standard-pattern picture
+                    </span>
+                  </Label>
+                  <div className="custom-scroll max-h-44 space-y-2.5 overflow-y-auto pr-1">
+                    {CHARACTER_EDITOR_ROMAN.map((group) => (
+                      <div key={group.label} className="space-y-1">
+                        <span className="block text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
+                          {group.label}
+                          <span className="ml-1 font-normal normal-case tracking-normal">
+                            ({group.patterns.length})
+                          </span>
+                        </span>
+                        <div
+                          className="grid grid-cols-8 gap-1 sm:grid-cols-10"
+                          role="group"
+                          aria-label={`Roman letters — ${group.label}`}
+                        >
+                          {group.patterns.map((p) => {
+                            const name = p.char === ' ' ? 'space' : p.char;
+                            return (
+                              <Button
+                                key={p.char}
+                                size="sm"
+                                variant="outline"
+                                className={cn(
+                                  'h-8 w-8 p-0 font-mono',
+                                  patternIsLive(p.pattern) && ACTIVE_PATTERN_CLS,
+                                )}
+                                onClick={() => setRowPattern(editing!, { ...p.pattern })}
+                                title={`${name} · segments ${p.segments || '(none)'} · code ${p.code}`}
+                                aria-label={`Apply ${group.label.toLowerCase()} ${name}: segments ${p.segments || 'none'}`}
+                                aria-pressed={patternIsLive(p.pattern)}
+                              >
+                                {p.char === ' ' ? '␠' : p.char}
+                              </Button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
 

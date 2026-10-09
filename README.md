@@ -69,6 +69,17 @@ The preset applies by **glyph order**, windowed onto the live code space (4-bit 
 
 </details>
 
+<details>
+<summary><b>Roman Letters Chart</b> — the reference picture as a standard pattern</summary>
+
+The classic reference picture titled *"Example set of Roman letters"* (kept at [docs/images/roman-letters-chart.png](./docs/images/roman-letters-chart.png)) is built in as **Roman Letters Chart (74 glyphs)** — Uppercase, Lowercase and Punctuation rows, exactly as drawn (B = "8", D/O = "0").
+
+It is the same picture behind the **Chart Font** (FONT mode): the glyph list was verified against the picture pixels, glyph for glyph (74/74), and the verification suite now pins that match permanently — each glyph also carries the `a`=bit0 … `g`=bit6 bitmask code, so `'A'` = 119, `'D'` = 63, `'I'` = 6. The 74-glyph chart and the 40-entry code chart above agree on every glyph they share.
+
+Applied as a table preset it maps **glyph i → code i** (4-bit → A–P, 5-bit → A–z), leaving the remaining rows as don't-cares — a plain editable table, unlike the font-window semantics of FONT mode.
+
+</details>
+
 ## 📦 Exports
 
 | Format | Contents |
@@ -103,7 +114,7 @@ The pure logic layer and every layer above it have permanent suites:
 
 | Command | Suite |
 |---|---|
-| `npm run verify:logic:node` | **546 checks** — parser, minimiser, K-maps, expressions, netlists, wire routing, factoring, Falstad geometry, standard patterns, determinism |
+| `npm run verify:logic:node` | **592 checks** — parser, minimiser, K-maps, expressions, netlists, wire routing, factoring, Falstad geometry, standard patterns, Roman-letters picture pin, editor palette, determinism |
 | `bun run scripts/verify-circuitverse.ts` | **64,205 checks** — CircuitVerse geometry invariants (no dangling wire endpoints, no collinear net overlaps) |
 | `npm run verify:services` | **62 checks** — use cases with in-memory repositories, plain Node |
 | `npm run verify:boundaries` | Architecture layer checks — imports under `src/` must respect the dependency rules |

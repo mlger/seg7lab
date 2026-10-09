@@ -46,7 +46,7 @@ jobs:
       - name: Typecheck — tsc --noEmit
         run: bunx tsc --noEmit
 
-      - name: Logic suite (546 checks)
+      - name: Logic suite (592 checks)
         run: bun run verify:logic
 
       - name: CircuitVerse geometry suite (64,205 checks)

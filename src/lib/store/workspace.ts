@@ -276,7 +276,7 @@ export const createWorkspaceSlice: StateCreator<SimulatorState, [], [], Workspac
     if (bits === get().inputBits) return;
     const fontMode = get().displayMode === 'font';
     const applied = resolveTablePreset(get().appliedPresetId, get().presetLibrary);
-    const regen = applied && ['excess3', 'gray', 'aiken', 'allon', 'alloff'].includes(applied.generator);
+    const regen = applied && ['excess3', 'gray', 'aiken', 'standard7', 'roman', 'allon', 'alloff'].includes(applied.generator);
     let table: TruthTable;
     if (fontMode) {
       table = presetTable(bits, 'font', get().invalidBehavior, undefined, {

@@ -85,6 +85,51 @@ Consolidated browser E2E (agent-browser, fresh DB): default load → truth-table
 
 **Final acceptance status: PASS.** The refactor's compatibility requirement (API contract, exports, user flows, visual presentation, persisted shapes) is verified to the extent listed; gaps below are stated explicitly.
 
+### Roman letters standard pattern (2026-10-09)
+
+The owner-supplied reference picture ("Example set of Roman letters", 3 rows:
+Uppercase / Lowercase / Punctuation, 74 glyphs) added as a standard pattern.
+
+| Check | Command | Result |
+|---|---|---|
+| Picture ground truth | pixel-level extraction of the uploaded chart (red = lit over grey ghost), then diffed against `FONT_GLYPHS` | **74/74 glyphs identical — the picture is exactly the Chart Font** |
+| Pure logic suite | `bun run verify:logic` | **582 passed, 0 failed** (546 + 36 new: picture pin, roman code convention, windowing, registration, E-275 regression) |
+| Lint / types | `bunx eslint .` · `bunx tsc --noEmit` | **clean** |
+| Boundary / services / CircuitVerse | `bun run verify:boundaries` · `npm run verify:services` · `bun run scripts/verify-circuitverse.ts` | **0 violations · 62/62 · 64,205/64,205** |
+
+Changes: `RomanPattern` + `ROMAN_LETTER_PATTERNS` + `codeFromSegments` in
+`src/logic/standardPatterns.ts` (derived from `FONT_GLYPHS` — single source of
+truth, pinned to the picture by the new fixture), generator `'roman'` +
+`builtin:roman` preset + `romanPatternTable` in `src/logic/presets.ts`,
+`'roman'` in the `PresetGenerator` union, width-regen list in
+`src/lib/store/workspace.ts`. Two latent defects fixed on the same paths:
+`'standard7'` (and `'roman'`) were missing from the preset-file `GENERATORS`
+import whitelist (E-275 on import) and from the width-change regen list
+(wrong resize behavior). Reference image committed at
+`docs/images/roman-letters-chart.png`.
+
+### Character editor: Roman palette in "Apply a standard pattern" (2026-10-09)
+
+The per-minterm character editor dialog (the second owner-supplied picture)
+gained the Roman-letters chart as a quick-apply palette under its existing
+hex row.
+
+| Check | Command | Result |
+|---|---|---|
+| Pure logic suite | `bun run verify:logic` | **592 passed, 0 failed** (582 + 10 new: editor-palette coverage, hex-twin identity, grouping, applicability) |
+| Lint / types / build | `bunx eslint .` · `bunx tsc --noEmit` · `bun run build` | **clean · clean · success** |
+| Boundary / services / CircuitVerse | `bun run verify:boundaries` · `npm run verify:services` · `bun run scripts/verify-circuitverse.ts` | **0 violations · 62/62 · 64,205/64,205** |
+| REST contract | unchanged code paths (no API/preset-registry edit); CI re-runs the 70-check suite | **n/a locally, pinned by CI** |
+| Browser E2E (dev server :3000) | agent-browser + VLM screenshot check | **68 Roman buttons (22 Uppercase / 24 Lowercase / 22 Punctuation), hex twins deduped; apply 'K' → segments BDEFG + truth-table m3 rewrite + emerald active highlight; 375px dialog no horizontal overflow (341 = 341); reload persistence via localStorage; zero console/page errors** |
+
+Changes: `CHARACTER_EDITOR_ROMAN` in `src/logic/standardPatterns.ts`
+(the Roman chart grouped by the picture's rows minus the six hex twins —
+A C E F b d carry byte-identical patterns in both families, pinned by the
+suite), the dialog's pattern section in
+`src/components/simulator/CustomCharacterCard.tsx` (scrollable
+`custom-scroll` grid, per-glyph tooltips + aria-pressed, active-pattern
+emerald highlight across hex, Roman and Blank/All X buttons).
+
 ## Known gaps
 
 - verify-api cannot exercise: server-generated cuid ids (the harness always
