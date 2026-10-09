@@ -112,7 +112,10 @@ export function mintermToTerm(minterm: number, numVars: number, varNames?: strin
 export function maxtermToTerm(minterm: number, numVars: number, varNames?: string[]): Term {
   const literals: Literal[] = [];
   for (let i = numVars - 1; i >= 0; i--) {
-    literals.push({ name: varAtBit(numVars, i, varNames), complemented: (minterm & (1 << i)) === 1 });
+    // A maxterm complements every variable that is 1 in the row. The test must
+    // be "bit is set" (≠ 0): `(... & mask) === 1` only ever matches bit 0, so it
+    // silently produced the wrong polarity for every other position.
+    literals.push({ name: varAtBit(numVars, i, varNames), complemented: (minterm & (1 << i)) !== 0 });
   }
   return { literals };
 }

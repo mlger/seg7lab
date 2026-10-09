@@ -34,8 +34,11 @@ import {
 import { SegmentSelector } from '../shared/SegmentSelector';
 import { SevenSegmentSvg } from '../SevenSegmentDisplay';
 import {
-  buildCircuit, evaluateCircuit, computeLevels, type CNode,
+  buildCircuit, evaluateCircuit, computeLevels, buildFactoredCircuit, getViewportTransform,
+  type Circuit, type CNode, type GateStyle,
 } from '@/logic/circuitNetlist';
+import { factorCover } from '@/logic/factoring';
+import { buildFactoredDecoderCircuit } from '@/logic/factoredDecoderCircuit';
 import { buildDecoderCircuit, termGroupKey } from '@/logic/decoderCircuit';
 import { mintermToTerm, maxtermToTerm } from '@/logic/expressions';
 import { downloadBlob, sanitizeFilename } from '@/utils/download';
@@ -49,10 +52,12 @@ import { CircuitCanvas, type NodeAccent } from './CircuitCanvas';
 import { GateInspector } from './GateInspector';
 import { GateReference } from './GateReference';
 
-const ZOOM_MIN = 0.1;
-const ZOOM_MAX = 2.5;
+const ZOOM_MIN = 0.25;
+const ZOOM_MAX = 6;
 /** Band jumps fit the band but never zoom in past this — small bands stay readable. */
-const BAND_JUMP_MAX_ZOOM = 1.1;
+const BAND_JUMP_MAX_ZOOM = 1.6;
+/** Zoom steps offered in the toolbar preset menu. */
+const ZOOM_PRESETS = [0.5, 1, 2] as const;
 const GATE_TYPES = ['and', 'or', 'not', 'xor', 'nand', 'nor', 'xnor'] as const;
 
 const FORM_CHIPS: { form: ExpressionForm; label: string; title: string }[] = [
@@ -67,6 +72,66 @@ const SWEEP_SPEEDS = [
   { ms: 250, label: '2×' },
   { ms: 1000, label: '½×' },
 ];
+
+/** Implementation style chips: basic AND/OR, or the De Morgan dual network
+ *  (SOP → NAND-NAND, POS → NOR-NOR — real 74-series decoders are NAND-based,
+ *  and universal-gate conversion is a classic lab exercise). */
+const STYLE_CHIPS: { style: GateStyle; label: string; title: string; unavailable: string }[] = [
+  {
+    style: 'basic',
+    label: 'AND/OR',
+    unavailable: '',
+    title: 'Standard implementation — AND terms combined by OR (SOP), or OR terms combined by AND (POS)',
+  },
+  {
+    style: 'universal',
+    label: 'Universal',
+    unavailable: 'Universal gates apply to the minimized SOP/POS forms — Σm / ΠM have no shared cover to convert.',
+    title: 'De Morgan dual — SOP built from NAND gates only (NAND-NAND), POS from NOR gates only (NOR-NOR)',
+  },
+  {
+    style: 'factored',
+    label: 'Layered',
+    unavailable: 'Layering applies to the minimized SOP and POS covers — the canonical Σm / ΠM forms are deliberately unminimized, so there is nothing to share.',
+    title: 'Layered — arrange the same gates in LAYERS: shared sub-expressions are built once and feed every gate that needs them.',
+  },
+];
+
+/**
+ * Zoom readout + preset menu (Fit / 50 / 100 / 200 %). Shared by the card
+ * toolbar and the fullscreen overlay so the two cannot drift apart.
+ */
+function ZoomControl({
+  zoom,
+  onFit,
+  onPreset,
+}: {
+  zoom: number;
+  onFit: () => void;
+  onPreset: (z: number) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          size="sm" variant="outline" className="h-7 min-w-[52px] px-1 font-mono text-[10px]"
+          title="Zoom level — pick a preset, or double-click to fit"
+          aria-label={`Zoom ${Math.round(zoom * 100)} percent. Open zoom presets.`}
+        >
+          {Math.round(zoom * 100)}%
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={onFit}>Fit to panel</DropdownMenuItem>
+        {ZOOM_PRESETS.map((z) => (
+          <DropdownMenuItem key={z} onSelect={() => onPreset(z)}>
+            {z * 100}%
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 export function LogicCircuitCard() {
   const activeSegment = useSimulator((s) => s.activeSegment);
@@ -109,6 +174,17 @@ export function LogicCircuitCard() {
   /* ---------------------- view state (local) ---------------------- */
   const [mode, setMode] = useState<'segment' | 'decoder'>('segment');
   const [expanded, setExpanded] = useState(false);
+  /** Gate implementation style: basic AND/OR or the De Morgan universal dual. */
+  const [styleChoice, setStyleChoice] = useState<GateStyle>('basic');
+
+  /**
+   * Multi-level factoring works for the minimized SOP and POS covers. Canonical
+   * Σm/ΠM are deliberately unminimized — factoring them is meaningless — so the
+   * style falls back to basic AND/OR there rather than pretending otherwise.
+   */
+  const factoredAvailable = !isCanonical;
+  const gateStyle: GateStyle =
+    styleChoice === 'factored' && !factoredAvailable ? 'basic' : styleChoice;
   const [zoom, setZoom] = useState(1);
   /** Hot-path mirror of zoom so the wheel handler stays subscription-stable. */
   const zoomRef = useRef(zoom);
@@ -134,6 +210,8 @@ export function LogicCircuitCard() {
   const [exporting, setExporting] = useState<string | null>(null);
   /** Canvas pixel size (ResizeObserver-fed) — drives the viewport-center indicator. */
   const [canvasDims, setCanvasDims] = useState({ w: 0, h: 0 });
+  /** Measured panel width, used to derive an aspect-matched canvas height. */
+  const [panelW, setPanelW] = useState(0);
   const svgRef = useRef<SVGSVGElement>(null);
   const inspectorRef = useRef<HTMLDivElement>(null);
 
@@ -144,15 +222,68 @@ export function LogicCircuitCard() {
 
   /* --------------------------- circuits --------------------------- */
   const decoder = useMemo(
-    () => (mode === 'decoder' ? buildDecoderCircuit(allTerms, form, varNames) : null),
-    [mode, allTerms, form, varNames],
+    () => (mode === 'decoder'
+      ? gateStyle === 'factored'
+        ? null // multi-level decoder built separately below
+        : buildDecoderCircuit(allTerms, form, varNames, gateStyle)
+      : null),
+    [mode, allTerms, form, varNames, gateStyle],
   );
+
+  /** Multi-level decoder (all eight segments in one shared factor context). */
+  const multiDecoder = useMemo(
+    () => (mode === 'decoder' && gateStyle === 'factored'
+      ? buildFactoredDecoderCircuit(allTerms, varNames)
+      : null),
+    [mode, gateStyle, allTerms, varNames],
+  );
+
+  /**
+   * Band/ownership view of whichever decoder builder is active. Both builders
+   * expose `bands` and `nodeOwner`, so the stepper, chips, band labels and the
+   * inspector work identically for two-level and multi-level.
+   */
+  const decoderView = multiDecoder ?? decoder;
+
   const circuit = useMemo(
     () => (mode === 'decoder'
-      ? decoder!.circuit
-      : buildCircuit(allTerms[activeSegment], form, varNames)),
-    [mode, decoder, allTerms, activeSegment, form, varNames],
+      ? (multiDecoder ? multiDecoder.circuit : decoder!.circuit)
+      : gateStyle === 'factored'
+        // Multi-level: variable stage count, so it uses the layered layout.
+        // Works for both forms (POS is factored by De Morgan duality).
+        ? buildFactoredCircuit(allTerms[activeSegment], varNames, form)
+        : buildCircuit(allTerms[activeSegment], form, varNames, gateStyle)),
+    [mode, decoder, multiDecoder, allTerms, activeSegment, form, varNames, gateStyle],
   );
+
+  /**
+   * Two-level vs multi-level comparison for the badge, in factored mode only.
+   *
+   * Both sides are measured the SAME way (gate count and canvas layers from the
+   * actual built circuits). Previously the badge mixed two different metrics —
+   * canvas layers here and the factorer's literal-graph depth there — so the
+   * same circuit appeared to be both "depth 4" and "depth 2", which is exactly
+   * what read as confusing.
+   */
+  const tradeoff = useMemo(() => {
+    if (gateStyle !== 'factored') return null;
+    const GATES = ['and', 'or', 'nand', 'nor', 'xor', 'xnor'];
+    const flat = buildCircuit(allTerms[activeSegment], form, varNames, 'basic');
+    const flatLevels = computeLevels(flat);
+    const flatGates = flat.nodes.filter((n) => GATES.includes(n.type)).length;
+    const multiGates = circuit.nodes.filter((n) => GATES.includes(n.type)).length;
+    // Derive the multi-level layer count here rather than reading maxLevel, which
+    // is computed further down this component.
+    const multiLayers = Math.max(1, Math.max(0, ...computeLevels(circuit).values()) + 1);
+    return {
+      flatGates,
+      flatLayers: Math.max(1, Math.max(0, ...flatLevels.values()) + 1),
+      multiGates,
+      multiLayers,
+      // The factorer's own narrower metric, kept for the literal saving claim.
+      literals: factorCover(allTerms[activeSegment], form).stats,
+    };
+  }, [gateStyle, allTerms, activeSegment, form, varNames, circuit]);
 
   /* live evaluation */
   const values = useMemo(
@@ -160,9 +291,36 @@ export function LogicCircuitCard() {
     [circuit, currentInput, inputBits, varNames],
   );
 
+  /**
+   * Panel height chosen so the canvas BOX aspect equals the viewBox aspect.
+   * With preserveAspectRatio="meet" an aspect mismatch letterboxes the drawing
+   * into a fraction of the box — which is what made the circuit look small.
+   * Matching the aspect makes zoom 100% mean "fills the panel".
+   */
+  const canvasHeight = useMemo(() => {
+    if (panelW < 10) return 0; // not measured yet — canvas falls back to CSS height
+    const wanted = (panelW * circuit.height) / circuit.width;
+    const viewportCap = typeof window !== 'undefined' ? window.innerHeight * 0.72 : 560;
+    return Math.round(Math.max(240, Math.min(wanted, viewportCap)));
+  }, [panelW, circuit.width, circuit.height]);
+
   /** Propagation depth per node (inputs = 0) — powers the level trace. */
   const levels = useMemo(() => computeLevels(circuit), [circuit]);
   const maxLevel = useMemo(() => Math.max(0, ...levels.values()), [levels]);
+
+  /**
+  * Per-segment circuits for the LIVE OUTPUT panel, built ONCE per (terms,
+  * form, style) — never rebuilt when only the input code changes. (This used
+  * to live inside the liveOutputs memo and rebuilt all eight netlists on
+  * every sweep tick.)
+  */
+  const liveCircuits = useMemo(() => {
+    const out = {} as Record<SegmentName, Circuit>;
+    for (const seg of SEGMENT_NAMES) {
+      out[seg] = buildCircuit(allTerms[seg], form, varNames, gateStyle);
+    }
+    return out;
+  }, [allTerms, form, varNames, gateStyle]);
 
   /**
    * Live logic levels of ALL eight segments for the current input: every
@@ -173,11 +331,10 @@ export function LogicCircuitCard() {
   const liveOutputs = useMemo(() => {
     const out: SegmentPatternX = {} as SegmentPatternX;
     for (const seg of SEGMENT_NAMES) {
-      const segCircuit = buildCircuit(allTerms[seg], form, varNames);
-      out[seg] = evaluateCircuit(segCircuit, currentInput, inputBits, varNames).get('out') ?? 0;
+      out[seg] = evaluateCircuit(liveCircuits[seg], currentInput, inputBits, varNames).get('out') ?? 0;
     }
     return out;
-  }, [allTerms, form, varNames, currentInput, inputBits]);
+  }, [liveCircuits, currentInput, inputBits, varNames]);
 
   /** Logic-level view of the display: user colors/brightness, but polarity
    *  forced to common-cathode — this panel shows gate outputs, not the
@@ -249,29 +406,27 @@ export function LogicCircuitCard() {
   const fitRect = useCallback(
     (minX: number, minY: number, maxX: number, maxY: number, opts?: { maxZoom?: number; center?: boolean }) => {
       const el = svgRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      if (rect.width < 10 || rect.height < 10) return;
+      const t = el ? getViewportTransform(el, circuit) : null;
+      if (!el || !t) return;
       if (!(maxX > minX) || !(maxY > minY)) return;
       const bw = maxX - minX;
       const bh = maxY - minY;
-      // viewBox → screen mapping (uniform meet) — must mirror toGraph()
-      const vbScale = Math.min(circuit.width / rect.width, circuit.height / rect.height);
-      const k = 1 / vbScale;
-      const offX = (rect.width - circuit.width / vbScale) / 2;
-      const offY = (rect.height - circuit.height / vbScale) / 2;
-      const pad = 24;
+      const k = t.k; // CSS px per viewBox unit — pan/zoom live in viewBox units
+      const rect = el.getBoundingClientRect();
+      // Proportional breathing room: small circuits don't get lost in a big pad,
+      // large ones aren't clipped by a fixed one.
+      const pad = Math.max(16, Math.min(40, 0.04 * Math.max(bw * k, bh * k)));
       const z = Math.min(
         opts?.maxZoom ?? ZOOM_MAX,
         Math.max(ZOOM_MIN, Math.min((rect.width - 2 * pad) / (bw * k), (rect.height - 2 * pad) / (bh * k))),
       );
       setZoom(z);
       if (opts?.center === false) {
-        setPan({ x: (pad - offX) / k - minX * z, y: (pad - offY) / k - minY * z });
+        setPan({ x: (pad - t.offX) / k - minX * z, y: (pad - t.offY) / k - minY * z });
       } else {
         const cx = (minX + maxX) / 2;
         const cy = (minY + maxY) / 2;
-        setPan({ x: (rect.width / 2 - offX) / k - cx * z, y: (rect.height / 2 - offY) / k - cy * z });
+        setPan({ x: (rect.width / 2 - t.offX) / k - cx * z, y: (rect.height / 2 - t.offY) / k - cy * z });
       }
     },
     [circuit],
@@ -287,45 +442,38 @@ export function LogicCircuitCard() {
       maxY = Math.max(maxY, p.y + n.h);
     }
     if (!Number.isFinite(minX)) return;
-    fitRect(minX, minY, maxX, maxY, { center: false });
+    // Centred: content sits in the middle of the panel instead of pinned to
+    // the top-left corner with dead space around it.
+    fitRect(minX, minY, maxX, maxY, { center: true });
   }, [circuit, overrides, fitRect]);
 
   /** Zoom to z2 keeping the graph point under (clientX, clientY) fixed. */
   const zoomAt = useCallback((clientX: number, clientY: number, z2: number) => {
     const el = svgRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    if (rect.width < 10 || rect.height < 10) return;
+    const t = el ? getViewportTransform(el, circuit) : null;
+    if (!el || !t) return;
     const z1 = zoomRef.current;
     if (z2 === z1) return;
-    const vs = Math.min(circuit.width / rect.width, circuit.height / rect.height);
-    const offX = (rect.width - circuit.width / vs) / 2;
-    const offY = (rect.height - circuit.height / vs) / 2;
-    const vx = (clientX - rect.left - offX) * vs;
-    const vy = (clientY - rect.top - offY) * vs;
-    setPan((p) => ({ x: vx - ((vx - p.x) / z1) * z2, y: vy - ((vy - p.y) / z1) * z2 }));
+    const v = t.toViewBox(clientX, clientY);
+    setPan((p) => ({ x: v.x - ((v.x - p.x) / z1) * z2, y: v.y - ((v.y - p.y) / z1) * z2 }));
     setZoom(z2);
     zoomRef.current = z2;
   }, [circuit]);
 
-  /** Button/keyboard zoom — anchored at the viewport center. */
-  const zoomStep = useCallback((dir: 1 | -1) => {
+  /** Zoom to an absolute level, anchored at the viewport center. */
+  const zoomTo = useCallback((target: number) => {
     const el = svgRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
     if (rect.width < 10 || rect.height < 10) return;
-    const z2 = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoomRef.current * (dir > 0 ? 1.2 : 1 / 1.2)));
+    const z2 = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, target));
     zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, z2);
   }, [zoomAt]);
 
-  /** Zoom-% readout click: back to 100%, viewport-center anchored. */
-  const resetZoom = useCallback(() => {
-    const el = svgRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    if (rect.width < 10 || rect.height < 10) return;
-    zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 1);
-  }, [zoomAt]);
+  /** Button/keyboard zoom — anchored at the viewport center. */
+  const zoomStep = useCallback((dir: 1 | -1) => {
+    zoomTo(zoomRef.current * (dir > 0 ? 1.25 : 1 / 1.25));
+  }, [zoomTo]);
 
   /** Auto-fit once per (layout × canvas size); never fights the user. */
   const [lastFitKey, setLastFitKey] = useState('');
@@ -337,11 +485,11 @@ export function LogicCircuitCard() {
     // In decoder mode the circuit is invariant to activeSegment — segment
     // switches must NOT refit (the chips jump the viewport themselves).
     const segKey = mode === 'segment' ? activeSegment : '';
-    const key = `${mode}|${segKey}|${expressionForm}|${inputBits}|${Math.round(rect.width)}x${Math.round(rect.height)}`;
+    const key = `${mode}|${segKey}|${expressionForm}|${inputBits}|${gateStyle}|${expanded}|${canvasHeight}|${Math.round(rect.width)}x${Math.round(rect.height)}`;
     if (key === lastFitKey) return;
     setLastFitKey(key);
     fitView();
-  }, [mode, activeSegment, expressionForm, inputBits, lastFitKey, fitView]);
+  }, [mode, activeSegment, expressionForm, inputBits, gateStyle, expanded, canvasHeight, lastFitKey, fitView]);
 
   useEffect(() => { maybeFit(); }, [maybeFit]);
 
@@ -353,6 +501,9 @@ export function LogicCircuitCard() {
       const w = Math.round(r.width);
       const h = Math.round(r.height);
       setCanvasDims((d) => (d.w === w && d.h === h ? d : { w, h }));
+      // Panel width drives the aspect-matched canvas height. Guarded so the
+      // height change this causes cannot re-trigger an update loop.
+      setPanelW((prev) => (prev === w ? prev : w));
       maybeFit();
     });
     ro.observe(el);
@@ -369,13 +520,10 @@ export function LogicCircuitCard() {
       const z1 = zoomRef.current;
       const z2 = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z1 * factor));
       if (z2 === z1) return;
-      const rect = el.getBoundingClientRect();
-      const vs = Math.min(circuit.width / rect.width, circuit.height / rect.height);
-      const offX = (rect.width - circuit.width / vs) / 2;
-      const offY = (rect.height - circuit.height / vs) / 2;
-      const vx = (e.clientX - rect.left - offX) * vs;
-      const vy = (e.clientY - rect.top - offY) * vs;
-      setPan((p) => ({ x: vx - ((vx - p.x) / z1) * z2, y: vy - ((vy - p.y) / z1) * z2 }));
+      const t = getViewportTransform(el, circuit);
+      if (!t) return;
+      const v = t.toViewBox(e.clientX, e.clientY);
+      setPan((p) => ({ x: v.x - ((v.x - p.x) / z1) * z2, y: v.y - ((v.y - p.y) / z1) * z2 }));
       setZoom(z2);
       zoomRef.current = z2;
     };
@@ -404,7 +552,7 @@ export function LogicCircuitCard() {
   }, [playing, sweepIdx, incrementInput]);
 
   /* level trace resets on layout change */
-  useEffect(() => { setRevealLevel(0); }, [mode, activeSegment, expressionForm, inputBits]);
+  useEffect(() => { setRevealLevel(0); }, [mode, activeSegment, expressionForm, inputBits, gateStyle]);
 
   /* bring the inspector into view when a gate gets selected (never in fullscreen) */
   useEffect(() => {
@@ -418,11 +566,11 @@ export function LogicCircuitCard() {
    *  small bands stay readable. Shared by chips, stepper, canvas labels and
    *  the keyboard band keys. */
   const jumpToBand = useCallback((seg: SegmentName) => {
-    if (!decoder) return;
-    const b = decoder.bands.find((x) => x.seg === seg);
+    if (!decoderView) return;
+    const b = decoderView.bands.find((x) => x.seg === seg);
     if (!b) return;
     fitRect(0, b.y - 26, circuit.width, b.y + b.height + 4, { maxZoom: BAND_JUMP_MAX_ZOOM });
-  }, [decoder, circuit, fitRect]);
+  }, [decoderView, circuit, fitRect]);
 
   /** Unified segment selection: chip / selector / LIVE OUTPUT / keyboard —
    *  highlights everywhere and, in decoder mode, jumps to the band. */
@@ -434,38 +582,36 @@ export function LogicCircuitCard() {
 
   /** Band under the viewport center (wayfinding indicator) — -1 when off-canvas. */
   const centerBandIdx = useMemo(() => {
-    if (mode !== 'decoder' || !decoder || canvasDims.w < 10 || canvasDims.h < 10) return -1;
+    if (mode !== 'decoder' || !decoderView || canvasDims.w < 10 || canvasDims.h < 10) return -1;
     const vs = Math.min(circuit.width / canvasDims.w, circuit.height / canvasDims.h);
     const offY = (canvasDims.h - circuit.height / vs) / 2;
     const vy = (canvasDims.h / 2 - offY) * vs;
     const gy = (vy - pan.y) / zoom;
-    return decoder.bands.findIndex((b) => gy >= b.y - 26 && gy < b.y + b.height + 4);
-  }, [mode, decoder, circuit, canvasDims, pan, zoom]);
+    return decoderView.bands.findIndex((b) => gy >= b.y - 26 && gy < b.y + b.height + 4);
+  }, [mode, decoderView, circuit, canvasDims, pan, zoom]);
 
   /** Step to the previous/next band from the one in view. */
   const stepBand = useCallback((dir: 1 | -1) => {
-    if (!decoder) return;
+    if (!decoderView) return;
     const from = centerBandIdx >= 0
       ? centerBandIdx
-      : decoder.bands.findIndex((b) => b.seg === activeSegment);
-    const next = Math.min(decoder.bands.length - 1, Math.max(0, from + dir));
-    selectSegment(decoder.bands[next].seg);
-  }, [decoder, centerBandIdx, activeSegment, selectSegment]);
+      : decoderView.bands.findIndex((b) => b.seg === activeSegment);
+    const next = Math.min(decoderView.bands.length - 1, Math.max(0, from + dir));
+    selectSegment(decoderView.bands[next].seg);
+  }, [decoderView, centerBandIdx, activeSegment, selectSegment]);
 
   /* ---------------------- pointer interactions --------------------- */
-  const toGraph = (clientX: number, clientY: number) => {
-    const rect = svgRef.current?.getBoundingClientRect();
-    if (!rect) return { x: 0, y: 0 };
-    // uniform viewBox scale + letterbox centering (preserveAspectRatio meet)
-    const scale = Math.min(circuit.width / rect.width, circuit.height / rect.height);
-    const offX = (rect.width - circuit.width / scale) / 2;
-    const offY = (rect.height - circuit.height / scale) / 2;
-    const vx = (clientX - rect.left - offX) * scale;
-    const vy = (clientY - rect.top - offY) * scale;
-    return { x: (vx - pan.x) / zoom, y: (vy - pan.y) / zoom };
-  };
+  /** Screen → graph coordinates. Stable while the circuit, pan and zoom hold,
+   *  which keeps the memoized canvas nodes from re-rendering on value ticks. */
+  const toGraph = useCallback((clientX: number, clientY: number) => {
+    const el = svgRef.current;
+    const t = el ? getViewportTransform(el, circuit) : null;
+    if (!t) return { x: 0, y: 0 };
+    const v = t.toViewBox(clientX, clientY);
+    return { x: (v.x - pan.x) / zoom, y: (v.y - pan.y) / zoom };
+  }, [circuit, pan.x, pan.y, zoom]);
 
-  const onPointerMove = (e: React.PointerEvent) => {
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!drag) return;
     const g = toGraph(e.clientX, e.clientY);
     if (Math.abs(g.x - drag.startX) + Math.abs(g.y - drag.startY) > 4) setMoved(true);
@@ -480,23 +626,27 @@ export function LogicCircuitCard() {
         },
       }));
     }
-  };
+  }, [drag, toGraph]);
 
-  /** Background press → start a pan drag (only when the empty canvas was hit). */
-  const onCanvasPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+  /** Background press → start a pan drag (only when the empty canvas was hit).
+   *  Pointer capture keeps the drag alive even if the cursor leaves the SVG. */
+  const onCanvasPointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     if ((e.target as Element).tagName === 'svg' || (e.target as Element).classList.contains('circuit-bg')) {
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* released already */ }
       setDrag({ kind: 'pan', startX: e.clientX, startY: e.clientY, startClientX: e.clientX, startClientY: e.clientY, origX: pan.x, origY: pan.y });
       setMoved(false);
     }
-  };
+  }, [pan.x, pan.y]);
 
-  /** Node press → start a gate drag (click without moving toggles/inspects). */
-  const onNodePointerDown = (e: React.PointerEvent<SVGGElement>, node: CNode, p: { x: number; y: number }) => {
+  /** Node press → start a gate drag (click without moving toggles/inspects).
+   *  Pointer capture keeps dragging a gate outside the canvas working. */
+  const onNodePointerDown = useCallback((e: React.PointerEvent<SVGGElement>, node: CNode, p: { x: number; y: number }) => {
     e.stopPropagation();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* released already */ }
     const g = toGraph(e.clientX, e.clientY);
     setDrag({ kind: 'gate', nodeId: node.id, startX: g.x, startY: g.y, startClientX: e.clientX, startClientY: e.clientY, origX: p.x, origY: p.y });
     setMoved(false);
-  };
+  }, [toGraph]);
 
   const activateNode = useCallback((node: CNode) => {
     if (node.id.startsWith('in-')) {
@@ -507,13 +657,13 @@ export function LogicCircuitCard() {
     }
   }, [varNames, toggleBit]);
 
-  const onPointerUp = () => {
+  const onPointerUp = useCallback((e: React.PointerEvent) => {
     if (drag && !moved && drag.nodeId) {
       const node = circuit.byId.get(drag.nodeId);
       if (node) activateNode(node);
     }
     setDrag(null);
-  };
+  }, [drag, moved, circuit, activateNode]);
 
   /** Canvas-level keyboard: arrows pan, +/- zoom, 0 fit; decoder mode also
    *  PageUp/PageDown + Home/End + 1-8 band jumps. */
@@ -534,14 +684,14 @@ export function LogicCircuitCard() {
         }
         break;
       case 'Home': case 'End':
-        if (mode === 'decoder' && decoder) {
-          selectSegment(decoder.bands[e.key === 'Home' ? 0 : decoder.bands.length - 1].seg);
+        if (mode === 'decoder' && decoderView) {
+          selectSegment(decoderView.bands[e.key === 'Home' ? 0 : decoderView.bands.length - 1].seg);
           e.preventDefault();
         }
         break;
       default:
-        if (mode === 'decoder' && decoder && e.key >= '1' && e.key <= '8') {
-          selectSegment(decoder.bands[Number(e.key) - 1].seg);
+        if (mode === 'decoder' && decoderView && e.key >= '1' && e.key <= '8') {
+          selectSegment(decoderView.bands[Number(e.key) - 1].seg);
           e.preventDefault();
         }
     }
@@ -549,7 +699,7 @@ export function LogicCircuitCard() {
 
   /* --------------------------- derived UI -------------------------- */
   const selectedNode = selected ? (circuit.byId.get(selected) ?? null) : null;
-  const ownerSegment = selectedNode && decoder ? decoder.nodeOwner.get(selectedNode.id) : undefined;
+  const ownerSegment = selectedNode && decoderView ? decoderView.nodeOwner.get(selectedNode.id) : undefined;
   const gateCount = useMemo(
     () => circuit.nodes.filter((n) => (GATE_TYPES as readonly string[]).includes(n.type)).length,
     [circuit],
@@ -557,17 +707,57 @@ export function LogicCircuitCard() {
   const formLabel = isCanonical
     ? (form === 'sop' ? 'CANONICAL Σm' : 'CANONICAL ΠM')
     : form.toUpperCase();
+
+  /**
+   * Logic-layer guides (multi-level only): one vertical rule per layer, so the
+   * network reads as stacked gate layers rather than one flat sheet.
+   */
+  const layerLines = useMemo(() => {
+    if (gateStyle !== 'factored') return null;
+    const byLayer = new Map<number, number>();
+    for (const n of circuit.nodes) {
+      const l = n.layer ?? 0;
+      // The leftmost x in a layer is that layer's column.
+      if (!byLayer.has(l) || n.x < byLayer.get(l)!) byLayer.set(l, n.x);
+    }
+    return [...byLayer.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([l, x]) => ({ x, label: l === 0 ? 'INPUTS' : `LAYER ${l}` }));
+  }, [gateStyle, circuit]);
+
+  /** Badge suffix naming the implementation style when it isn't basic AND/OR. */
+  const styleLabel = gateStyle === 'universal'
+    ? (form === 'sop' ? ' · NAND-NAND' : ' · NOR-NOR')
+    : gateStyle === 'factored' ? ' · MULTI-LEVEL' : '';
+  /**
+   * Side-by-side readout on ONE metric so the two columns can be compared: gates
+   * and LAYERS, both measured from the actual built circuits. The verdict is
+   * stated plainly (saves / costs / identical) because layering usually COSTS a
+   * layer for the same gate count, and a badge that implied a win would be
+   * misleading.
+   */
+  const tradeoffNote = !tradeoff
+    ? ''
+    : tradeoff.flatGates === tradeoff.multiGates && tradeoff.flatLayers === tradeoff.multiLayers
+      ? ' — identical to two-level here (nothing in this cover is worth factoring)'
+      : ` — two-level: ${tradeoff.flatGates} gates / ${tradeoff.flatLayers} layers · `
+        + `layered: ${tradeoff.multiGates} gates / ${tradeoff.multiLayers} layers`
+        + (tradeoff.multiGates < tradeoff.flatGates
+          ? ' (saves a gate)'
+          : tradeoff.multiGates > tradeoff.flatGates
+            ? ' (costs a gate)'
+            : ' (same gates, one stage deeper)');
   const outValue = mode === 'segment'
     ? (values.get('out') ?? 0)
     : (values.get(`o-${activeSegment}`) ?? 0);
   const reveal = trace ? Math.min(revealLevel, maxLevel) : null;
 
   /* stepper bounds (decoder mode) — from the band in view, or the active chip */
-  const stepFrom = decoder && mode === 'decoder'
-    ? (centerBandIdx >= 0 ? centerBandIdx : decoder.bands.findIndex((b) => b.seg === activeSegment))
+  const stepFrom = decoderView && mode === 'decoder'
+    ? (centerBandIdx >= 0 ? centerBandIdx : decoderView.bands.findIndex((b) => b.seg === activeSegment))
     : -1;
   const atFirst = stepFrom <= 0;
-  const atLast = !decoder || stepFrom >= decoder.bands.length - 1;
+  const atLast = !decoderView || stepFrom >= decoderView.bands.length - 1;
 
   /** K-map accent info for the inspector when a term gate is selected. */
   const inspectorAccent = useMemo(() => {
@@ -575,14 +765,14 @@ export function LogicCircuitCard() {
     const seg = ownerSegment ?? activeSegment;
     const groups = form === 'sop' ? engines[seg].sopGroups : engines[seg].posGroups;
     const terms = allTerms[seg];
-    const idx = mode === 'segment'
-      ? Number(selectedNode.id.slice('term-'.length))
-      : Number(selectedNode.id.slice(selectedNode.id.indexOf('-', 2) + 1));
+    // termIndex is authored by the netlist builders — never parse node ids.
+    const idx = selectedNode.termIndex;
+    if (idx === undefined) return null;
     const t = terms[idx];
     const g = t ? groups.find((gr) => termGroupKey(gr.term) === termGroupKey(t)) : undefined;
     if (!g) return null;
     return { color: groupColor(g.colorIndex), size: g.size, essential: g.isEssential };
-  }, [selectedNode, nodeAccents, ownerSegment, activeSegment, engines, form, allTerms, mode]);
+  }, [selectedNode, nodeAccents, ownerSegment, activeSegment, engines, form, allTerms]);
 
   /* --------------------------- image export ------------------------ */
   const exportCircuit = async (kind: 'svg' | 'png') => {
@@ -590,7 +780,7 @@ export function LogicCircuitCard() {
     if (!svg) return;
     setExporting(kind);
     try {
-      const base = `${sanitizeFilename(projectName)}-circuit-${mode === 'decoder' ? 'decoder' : activeSegment}-${expressionForm}`;
+      const base = `${sanitizeFilename(projectName)}-circuit-${mode === 'decoder' ? 'decoder' : activeSegment}-${expressionForm}${gateStyle === 'basic' ? '' : '-universal'}`;
       if (kind === 'svg') {
         downloadBlob(buildCircuitSvgBlob(svg), `${base}.svg`);
         toast({ title: 'Circuit SVG exported', description: `${mode === 'decoder' ? 'Full decoder' : `Segment ${activeSegment}`} · ${formLabel}` });
@@ -650,8 +840,27 @@ export function LogicCircuitCard() {
                 </Button>
               ))}
             </div>
+            {/* gate implementation style (De Morgan universal gates) */}
+            <div className="flex rounded-md border p-0.5" role="group" aria-label="Gate implementation style">
+              {STYLE_CHIPS.map((s) => {
+                const disabled = s.style === 'factored' ? !factoredAvailable : isCanonical;
+                return (
+                  <Button
+                    key={s.style}
+                    size="sm" variant={styleChoice === s.style ? 'secondary' : 'ghost'}
+                    className="h-6 px-2 text-[11px] font-mono"
+                    disabled={disabled}
+                    onClick={() => { setStyleChoice(s.style); setSelected(null); }}
+                    aria-pressed={styleChoice === s.style}
+                    title={disabled ? s.unavailable : s.title}
+                  >
+                    {s.label}
+                  </Button>
+                );
+              })}
+            </div>
             <Badge variant="secondary" className="font-mono text-[10px]">
-              {formLabel} · {gateCount} gates · depth {maxLevel}
+              {formLabel}{styleLabel} · {gateCount} gates · {maxLevel + 1} layers{tradeoffNote}
             </Badge>
             {/* level trace */}
             <Button
@@ -659,17 +868,17 @@ export function LogicCircuitCard() {
               className="h-7 gap-1 px-2 text-[11px]"
               onClick={() => setTrace((t) => !t)}
               aria-pressed={trace}
-              title="Level trace — reveal the circuit level by level (propagation order)"
+              title="Layer trace — reveal the circuit one logic LAYER at a time (propagation order)"
             >
               <Layers className="h-3.5 w-3.5" aria-hidden /> TRACE
             </Button>
             {trace && (
-              <div className="flex items-center gap-0.5" role="group" aria-label="Revealed logic level">
+              <div className="flex items-center gap-0.5" role="group" aria-label="Revealed logic layer">
                 <Button size="sm" variant="outline" className="h-7 px-1.5" onClick={() => setRevealLevel((l) => Math.max(0, l - 1))} aria-label="Hide one level">
                   <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
                 </Button>
                 <span className="min-w-[62px] text-center font-mono text-[10px] text-muted-foreground" aria-live="polite">
-                  level {reveal}/{maxLevel}
+                  layer {reveal}/{maxLevel}
                 </span>
                 <Button size="sm" variant="outline" className="h-7 px-1.5" onClick={() => setRevealLevel((l) => Math.min(maxLevel, l + 1))} aria-label="Reveal one more level">
                   <ChevronRight className="h-3.5 w-3.5" aria-hidden />
@@ -683,14 +892,11 @@ export function LogicCircuitCard() {
             <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => zoomStep(-1)} aria-label="Zoom out">
               <ZoomOut className="h-3.5 w-3.5" aria-hidden />
             </Button>
-            <Button
-              size="sm" variant="outline" className="h-7 min-w-[52px] px-1 font-mono text-[10px]"
-              onClick={resetZoom}
-              title="Zoom level — click to reset to 100%"
-              aria-label={`Zoom ${Math.round(zoom * 100)} percent, click to reset to 100 percent`}
-            >
-              {Math.round(zoom * 100)}%
-            </Button>
+            <ZoomControl
+              zoom={zoom}
+              onFit={fitView}
+              onPreset={zoomTo}
+            />
             <Button size="sm" variant="outline" className="h-7 px-2" onClick={fitView} aria-label="Fit circuit to view">
               <Maximize className="h-3.5 w-3.5" aria-hidden />
             </Button>
@@ -725,7 +931,7 @@ export function LogicCircuitCard() {
       </CardHeader>
       <CardContent className="space-y-3">
         {/* decoder stats strip + band rail (click a chip to jump, double-click to open one) */}
-        {mode === 'decoder' && decoder && (
+        {mode === 'decoder' && decoderView && (
           <div className="flex flex-wrap items-center gap-1.5">
             {/* band stepper — sequential tour of the decoder */}
             <div className="flex items-center gap-0.5" role="group" aria-label="Step between segment bands">
@@ -747,9 +953,11 @@ export function LogicCircuitCard() {
               </Button>
             </div>
             <Badge variant="secondary" className="font-mono text-[10px]">
-              8 segments · {gateCount} gates · {circuit.wires.length} wires · depth {maxLevel}
-            </Badge>
-            {decoder.bands.map((b, i) => {
+              8 segments · {gateCount} gates · {circuit.wires.length} wires · {maxLevel + 1} layers
+              {multiDecoder
+                ? ` · ${multiDecoder.crossSegmentSignals.length} shared across segments`
+                : ''}
+            </Badge>            {decoderView.bands.map((b, i) => {
               const inView = i === centerBandIdx;
               return (
                 <button
@@ -855,33 +1063,34 @@ export function LogicCircuitCard() {
             form={form}
             zoom={zoom}
             pan={pan}
+            expanded={expanded}
+            canvasHeight={canvasHeight}
             cone={cone}
             levels={levels}
             revealLevel={reveal}
             nodeAccents={nodeAccents}
-            bandLines={mode === 'decoder' && decoder
-              ? decoder.bands.map((b) => ({ y: b.y, label: `SEGMENT ${b.seg}`, seg: b.seg }))
+            bandLines={mode === 'decoder' && decoderView 
+              ? decoderView.bands.map((b) => ({ y: b.y, label: `SEGMENT ${b.seg}`, seg: b.seg }))
               : null}
+            layerLines={layerLines}
             decoderMode={mode === 'decoder'}
             onBandJump={mode === 'decoder' ? selectSegment : undefined}
-            expanded={expanded}
             onCanvasPointerDown={onCanvasPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
-            onPointerLeave={() => setDrag(null)}
             onNodePointerDown={onNodePointerDown}
             onNodeActivate={activateNode}
             onCanvasKeyDown={onCanvasKeyDown}
           />
           {expanded && (
             <div className="absolute right-4 top-4 flex max-w-[calc(100%-2rem)] flex-wrap items-center justify-end gap-1 rounded-lg border bg-background/95 p-1 shadow-sm">
-              {mode === 'decoder' && decoder && (
+              {mode === 'decoder' && decoderView && (
                 <>
                   <Button size="sm" variant="outline" className="h-7 px-1.5" onClick={() => stepBand(-1)} disabled={atFirst} aria-label="Previous segment band (Page Up)">
                     <ChevronUp className="h-3.5 w-3.5" aria-hidden />
                   </Button>
                   <span className="min-w-[26px] text-center font-mono text-[10px] text-muted-foreground" aria-live="polite">
-                    {centerBandIdx >= 0 ? decoder.bands[centerBandIdx].seg : '—'}
+                    {centerBandIdx >= 0 ? decoderView.bands[centerBandIdx].seg : '—'}
                   </span>
                   <Button size="sm" variant="outline" className="h-7 px-1.5" onClick={() => stepBand(1)} disabled={atLast} aria-label="Next segment band (Page Down)">
                     <ChevronDown className="h-3.5 w-3.5" aria-hidden />
@@ -895,14 +1104,11 @@ export function LogicCircuitCard() {
               <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => zoomStep(-1)} aria-label="Zoom out">
                 <ZoomOut className="h-3.5 w-3.5" aria-hidden />
               </Button>
-              <Button
-                size="sm" variant="outline" className="h-7 min-w-[52px] px-1 font-mono text-[10px]"
-                onClick={resetZoom}
-                title="Zoom level — click to reset to 100%"
-                aria-label={`Zoom ${Math.round(zoom * 100)} percent, click to reset to 100 percent`}
-              >
-                {Math.round(zoom * 100)}%
-              </Button>
+              <ZoomControl
+                zoom={zoom}
+                onFit={fitView}
+                onPreset={zoomTo}
+              />
               <Button size="sm" variant="outline" className="h-7 px-2" onClick={fitView} aria-label="Fit circuit to view">
                 <Maximize className="h-3.5 w-3.5" aria-hidden />
               </Button>
@@ -911,17 +1117,17 @@ export function LogicCircuitCard() {
                 className="h-7 gap-1 px-2 text-[11px]"
                 onClick={() => setTrace((t) => !t)}
                 aria-pressed={trace}
-                title="Level trace — reveal the circuit level by level (propagation order)"
+                title="Layer trace — reveal the circuit one logic LAYER at a time (propagation order)"
               >
                 <Layers className="h-3.5 w-3.5" aria-hidden /> TRACE
               </Button>
               {trace && (
-                <div className="flex items-center gap-0.5" role="group" aria-label="Revealed logic level">
+                <div className="flex items-center gap-0.5" role="group" aria-label="Revealed logic layer">
                   <Button size="sm" variant="outline" className="h-7 px-1.5" onClick={() => setRevealLevel((l) => Math.max(0, l - 1))} aria-label="Hide one level">
                     <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
                   </Button>
                   <span className="min-w-[62px] text-center font-mono text-[10px] text-muted-foreground" aria-live="polite">
-                    level {reveal}/{maxLevel}
+                    layer {reveal}/{maxLevel}
                   </span>
                   <Button size="sm" variant="outline" className="h-7 px-1.5" onClick={() => setRevealLevel((l) => Math.min(maxLevel, l + 1))} aria-label="Reveal one more level">
                     <ChevronRight className="h-3.5 w-3.5" aria-hidden />
@@ -954,7 +1160,7 @@ export function LogicCircuitCard() {
         {/* legend + hint */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <span className="h-0.5 w-6 rounded bg-emerald-500" aria-hidden />
+            <span className="h-0.5 w-6 rounded bg-teal-700 dark:bg-teal-500" aria-hidden />
             logic&nbsp;1 (active path)
           </span>
           <span className="flex items-center gap-1.5">
@@ -964,6 +1170,30 @@ export function LogicCircuitCard() {
           <span className="flex items-center gap-1.5">
             <span className="h-0.5 w-6 rounded bg-amber-500" aria-hidden />
             selected gate&apos;s path
+          </span>
+          {/* schematic key — reads like the textbook figure */}
+          <span className="flex items-center gap-1.5">
+            <svg width="26" height="12" aria-hidden className="shrink-0">
+              <path d="M 1,6 L 12,6" stroke="currentColor" strokeWidth="1.7" fill="none" />
+              <circle cx="15" cy="6" r="3" fill="none" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M 18,6 L 25,6" stroke="currentColor" strokeWidth="1.7" fill="none" />
+            </svg>
+            bubble&nbsp;=&nbsp;inverted output
+          </span>
+          <span className="flex items-center gap-1.5">
+            <svg width="26" height="12" aria-hidden className="shrink-0">
+              <path d="M 1,6 L 25,6" stroke="currentColor" strokeWidth="1.7" fill="none" />
+              <circle cx="13" cy="6" r="3.4" fill="currentColor" />
+            </svg>
+            dot&nbsp;=&nbsp;wires joined (shared signal)
+          </span>
+          <span className="flex items-center gap-1.5">
+            <svg width="26" height="12" aria-hidden className="shrink-0">
+              <path d="M 1,6 L 12,6" stroke="currentColor" strokeWidth="1.7" fill="none" />
+              <path d="M 13,1 L 13,11" stroke="currentColor" strokeWidth="1.5" fill="none" />
+              <path d="M 13,6 L 25,6" stroke="currentColor" strokeWidth="1.7" fill="none" />
+            </svg>
+            cross&nbsp;=&nbsp;not connected
           </span>
           <span className="flex items-center gap-1.5">
             <MousePointerClick className="h-3.5 w-3.5" aria-hidden />
@@ -1003,7 +1233,7 @@ export function LogicCircuitCard() {
                   {form.toUpperCase()} network at once: the input rails and NOT gates on the left are{' '}
                   <strong>shared</strong> by all eight bands, and each band holds that segment&apos;s{' '}
                   {form === 'sop' ? 'product terms (AND) and its combining OR' : 'sum terms (OR) and its combining AND'}{' '}
-                  gate feeding the labeled output driver. The same input feeds all bands, so the green
+                  gate feeding the labeled output driver. The same input feeds all bands, so the teal
                   paths you see are exactly the wires driving the glyph on the LIVE OUTPUT panel.
                 </p>
                 <p>
@@ -1029,12 +1259,27 @@ export function LogicCircuitCard() {
                 </p>
                 <p>
                   With the current input <span className="font-mono">m{currentInput}</span>, the highlighted
-                  green paths carry logic 1. The output driver currently reads{' '}
+                  teal paths carry logic 1. The output driver currently reads{' '}
                   <span className="font-mono">{outValue}</span> — segment {activeSegment} is{' '}
                   <span className="font-mono">{outValue}</span> for this input, matching the
                   truth table.
                 </p>
               </>
+            )}
+
+            {gateStyle === 'factored' && (
+              <p>
+                <strong>Layered means the gates are arranged in LAYERS.</strong> Each vertical band
+                above (INPUTS, LAYER 1, LAYER 2 …) is one stage of gates, and a signal passes
+                through every layer on its way to the output. The factorer looks for a product of
+                literals that several terms have in common, builds that sub-expression <em>once</em>{' '}
+                as an ordinary gate in an earlier layer, and wires that one gate&apos;s output into
+                every place that needs it — no special “shared” box, just a gate with two wires
+                leaving it. On this data-set the minimizer has usually already squeezed the cover
+                flat, so layering often comes out <em>the same size but one stage deeper</em>; the
+                badge above says which case you are looking at, and segment E is the one that saves
+                a gate at 4 bits. Treat this view as a lesson in the tradeoff rather than a win.
+              </p>
             )}
             <p>
               Input rails are clickable (they toggle the simulator input; they also respond to Enter when

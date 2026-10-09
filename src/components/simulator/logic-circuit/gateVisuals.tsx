@@ -7,22 +7,55 @@
 
 import type { GateType } from '@/logic/circuitNetlist';
 
-export const GATE_INFO: Record<string, { desc: string; expr: string }> = {
-  AND: { desc: 'Outputs 1 only when every input is 1.', expr: 'Y = A·B' },
-  OR: { desc: 'Outputs 1 when at least one input is 1.', expr: 'Y = A + B' },
-  NOT: { desc: 'Inverts its single input.', expr: "Y = A'" },
-  NAND: { desc: 'AND followed by inversion — outputs 0 only when every input is 1.', expr: "Y = (A·B)'" },
-  NOR: { desc: 'OR followed by inversion — outputs 1 only when every input is 0.', expr: "Y = (A+B)'" },
-  XOR: { desc: 'Outputs 1 when an odd number of inputs are 1.', expr: 'Y = A ⊕ B' },
-  XNOR: { desc: 'XOR followed by inversion — outputs 1 when inputs are equal.', expr: "Y = (A ⊕ B)'" },
+export const GATE_INFO: Record<string, { desc: string; expr: string; part: string }> = {
+  AND: {
+    desc: 'Outputs 1 only when every input is 1.',
+    expr: 'Y = A·B',
+    part: '74HC08 (quad 2-in) · 74HC11 (triple 3-in)',
+  },
+  OR: {
+    desc: 'Outputs 1 when at least one input is 1.',
+    expr: 'Y = A + B',
+    part: '74HC32 (quad 2-in) · 74HC4075 (triple 3-in)',
+  },
+  NOT: {
+    desc: 'Inverts its single input.',
+    expr: "Y = A'",
+    part: '74HC04 (hex inverter)',
+  },
+  NAND: {
+    desc: 'AND followed by inversion — outputs 0 only when every input is 1.',
+    expr: "Y = (A·B)'",
+    part: '74HC00 (quad 2-in) · 74HC10 (triple 3-in)',
+  },
+  NOR: {
+    desc: 'OR followed by inversion — outputs 1 only when every input is 0.',
+    expr: "Y = (A+B)'",
+    part: '74HC02 (quad 2-in) · 74HC27 (triple 3-in)',
+  },
+  XOR: {
+    desc: 'Outputs 1 when an odd number of inputs are 1.',
+    expr: 'Y = A ⊕ B',
+    part: '74HC86 (quad 2-in)',
+  },
+  XNOR: {
+    desc: 'XOR followed by inversion — outputs 1 when inputs are equal.',
+    expr: "Y = (A ⊕ B)'",
+    part: '74HC7266 (quad 2-in)',
+  },
 };
 
-/** SVG body of one gate symbol (no wrapper <g> — caller positions it). */
+/** SVG body of one gate symbol (no wrapper <g> — caller positions it).
+ *  Textbook-schematic treatment, matching the reference figure: a monoline
+ *  outline with a pale blue body. The only colour change is that an ACTIVE
+ *  gate (output currently logic 1) takes the accent stroke/body — so the
+ *  schematic still shows the live signal path without looking like a dashboard.
+ */
 export function gateSymbol(type: GateType, x: number, y: number, w: number, h: number, active: boolean) {
-  const stroke = active ? '#10b981' : 'currentColor';
-  const fill = active ? 'rgba(16,185,129,0.12)' : 'rgba(128,128,128,0.07)';
+  const stroke = active ? '#0f766e' : 'rgba(30,30,36,0.85)';
+  const fill = active ? 'rgba(15,118,110,0.14)' : 'rgba(173,196,222,0.20)';
   const bubble = (bx: number) => (
-    <circle cx={bx} cy={y + h / 2} r={6} fill="none" stroke={stroke} strokeWidth={2} />
+    <circle cx={bx} cy={y + h / 2} r={6} fill="none" stroke={stroke} strokeWidth={1.8} />
   );
   switch (type) {
     case 'and':

@@ -14,8 +14,7 @@ export function GateReference() {
       <summary className="cursor-pointer text-xs font-semibold uppercase tracking-widest text-muted-foreground">
         Gate reference (AND · OR · NOT · NAND · NOR · XOR · XNOR)
       </summary>
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-        {(['and', 'or', 'not', 'nand', 'nor', 'xor', 'xnor'] as GateType[]).map((t) => (
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">        {(['and', 'or', 'not', 'nand', 'nor', 'xor', 'xnor'] as GateType[]).map((t) => (
           <div key={t} className="flex flex-col items-center gap-1.5 rounded-md border bg-background/60 p-2">
             <svg viewBox="0 0 80 44" className="h-10 w-full text-foreground" role="img" aria-label={`${t.toUpperCase()} gate symbol`}>
               {gateSymbol(t, 6, 4, 62, 36, false)}
@@ -23,6 +22,9 @@ export function GateReference() {
             <span className="font-mono text-[10px] font-semibold">{t.toUpperCase()}</span>
             <span className="text-center font-mono text-[9px] leading-tight text-muted-foreground">
               {GATE_INFO[t.toUpperCase()].expr}
+            </span>
+            <span className="mt-auto text-center font-mono text-[8px] leading-tight text-muted-foreground/80">
+              {GATE_INFO[t.toUpperCase()].part}
             </span>
           </div>
         ))}

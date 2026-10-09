@@ -94,7 +94,7 @@ export type PresetCategory = 'Digits' | 'Codes' | 'Letters' | 'Boundary' | 'User
 
 /** Generator identifiers of built-in table presets. 'literal' = exact stored table. */
 export type PresetGenerator =
-  | 'bcd' | 'hex' | 'font' | 'excess3' | 'gray' | 'aiken'
+  | 'bcd' | 'hex' | 'font' | 'excess3' | 'gray' | 'aiken' | 'standard7'
   | 'allon' | 'alloff' | 'literal';
 
 /** Options a table preset may carry (restored on apply). */

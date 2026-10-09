@@ -24,6 +24,8 @@ import {
 import { downloadBlob, downloadText, sanitizeFilename } from '@/utils/download';
 import { toast } from '@/hooks/use-toast';
 import { CircuitVerseExportDialog } from './CircuitVerseExportDialog';
+import { buildFalstadNetlist, falstadFilename } from '@/logic/falstad';
+import { SEGMENT_NAMES } from '@/types/simulator';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -131,6 +133,34 @@ export function ExportMenu({ displaySvgRef }: { displaySvgRef: React.RefObject<S
           </DropdownMenuItem>
           <DropdownMenuItem disabled={busy !== null} onSelect={() => setCvOpen(true)}>
             <CircuitBoard className="mr-2 h-4 w-4" aria-hidden /> CircuitVerse circuit (.cv)
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            {...exportItem('Falstad netlist', () => {
+              // One circuit per segment, in the classic `$` text netlist that
+              // CircuitJS1 (falstad.com/circuit) opens via File → Open File… or
+              // "Import From Text". Each segment exports as its own file because a
+              // single file holding several circuits risks their corridors
+              // colliding, and one file per circuit is the idiomatic shape.
+              const proj = toProjectData();
+              const varNames = proj.variableNames ?? [];
+              for (const seg of SEGMENT_NAMES) {
+                const built = buildFalstadNetlist(engines, proj.inputBits, varNames, {
+                  form: 'sop',
+                  style: 'basic',
+                  segments: [seg],
+                });
+                // Skip constant segments (nothing to draw).
+                if (!built.perSegment[seg]) continue;
+                downloadText(
+                  built.text,
+                  `${falstadFilename(proj.name, { form: 'sop', style: 'basic', segments: [seg] })}.txt`,
+                  'text/plain',
+                );
+              }
+            })}
+          >
+            <CircuitBoard className="mr-2 h-4 w-4" aria-hidden /> Falstad / CircuitJS1 (.txt)
+            {busy === 'Falstad netlist' && <Loader2 className="ml-auto h-4 w-4 animate-spin" aria-hidden />}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Display &amp; report</DropdownMenuLabel>

@@ -769,3 +769,200 @@ Stage Summary:
 - Repo mlger/seg7lab connected (origin, PAT auth) and fully synced: remote main now carries ALL work — logic simulator (Tasks 1-10), circuit navigation fixes (11-12), SEG7 Lab branding P1-P2 (13), Cloudflare deploy fix (14), plus this task's repo hygiene (sandbox internals out of git, package renamed seg7lab, .env.example, Apache-2.0 LICENSE preserved, env-driven metadataBase).
 - User's Cloudflare next steps: ensure Workers Builds deploy command = `bun run deploy` (build `bun run build` optional — deploy script builds itself); optionally set NEXT_PUBLIC_SITE_URL build env var to the final URL for correct OG images; PAT was shared in chat — recommend rotating it after setup.
 - Open follow-ups unchanged: D1/Turso migration if server-side persistence on Workers is wanted; branding P3-P4.
+---
+Task ID: 16
+Agent: AutoClaw (main)
+Task: In-depth review of the Logic Circuit tab, then implement the review's recommendations (performance, robustness, De Morgan feature, tests, polish).
+
+Work Log:
+- Reviewed LogicCircuitCard.tsx (~1,050 lines, composition root), CircuitCanvas.tsx, GateInspector.tsx, gateVisuals.tsx, circuitNetlist.ts, decoderCircuit.ts, plus the tab's forceMount wiring in page.tsx.
+- P0 perf — liveOutputs rebuilt all eight netlists on every input tick: split into `liveCircuits` (memo on terms/form/style) + `liveOutputs` (memo on currentInput). The auto-sweep player no longer reconstructs gate graphs 10x/second.
+- P0 perf — CircuitCanvas wires/nodes are now individual `memo` components (`Wire`, `NodeView`) compared on painted primitives, with `data-value` kept for CSS. Canvas style hooks, none of the live physics.
+- Robustness — the viewport transform was copy-pasted five times (fitRect, zoomAt, wheel, toGraph, centerBandIdx) with a comment admitting "must mirror toGraph()". Extracted `getViewportTransform(el, circuit)` into circuitNetlist.ts; all five call sites now share it. (centerBandIdx uses canvasDims rather than a live rect, so it was left as its own memo with a note.)
+- Robustness — node-id string parsing (`slice('term-'.length)`) replaced by builder-authored `termIndex` on CNode; inspectorAccent no longer infers the term index from the id.
+- Robustness — pointer capture on canvas pan and gate drag, so drags survive the cursor leaving the SVG (previously aborted via onPointerLeave).
+- Feature — De Morgan universal-gate mode. After the first test run proved the pairing matters, the style model was collapsed to `'basic' | 'universal'`: SOP → NAND-NAND, POS → NOR-NOR. Universal mode inverts at the term level and fixes single-term (re-invert with a 1-input gate) and empty-term cases; disabled for the canonical Σm/ΠM forms.
+- P1 bugs found by the new tests (both pre-existing, circuit tab only): (a) POS/ΠM with an empty term emitted const 1 instead of const 0 — DP in SOP/POS rendered the wrong constant; (b) `maxtermToTerm` tested `(minterm & mask) === 1` instead of `!== 0`, so every maxterm literal above the LSB had the wrong polarity — canonical ΠM was silently wrong whenever displayed.
+- Polish — ARIA role group (was role=img with focusable children, which AT treats as presentational), responsive canvas height clamp(280px,48vh,520px), style-aware stats badge and export filenames.
+- Tests — new section 9 in scripts/verify-logic.ts: SOP/POS × basic/universal over all 8 segments × 16 inputs vs expression evaluation; specified-cell agreement with the truth table; canonical Σm/ΠM row reproduction; universal gate inventory (NAND-only / NOR-only); termIndex integrity; propagation-depth sanity; full-decoder view (bands, shared rails, ownership). Also added a Node runner (scripts/register-alias.mjs + alias-hooks.mjs + `verify:logic:node`) since the box has no bun.
+- Gates: verify:logic 308/308 (was 283/283) · tsc 0 errors · dev server 200. Lint: the 2 flagged diagnostics in LogicCircuitCard are pre-existing patterns (zoomRef mirror, level-trace reset effect); repo-wide lint errors were already 9 across 5 files before this task — no new ones introduced.
+
+Stage Summary:
+- Circuit tab: faster (no per-tick netlist rebuild, memoized wires/nodes), more robust (single transform helper, authored metadata, pointer capture), and now covers universal-gate implementation as a teaching mode.
+- Fixed two real correctness bugs surfaced by the added coverage; canonical ΠM rendering was affected by the maxterm polarity bug.
+- Verification suite grew 283 → 308 checks and now locks in the whole circuit layer.
+- Open: gate-layout persistence in the project blob, timing/hazard view, junction dots + orthogonal routing, and pinch-zoom remain unimplemented (listed in the review, not part of this task).
+---
+Task ID: 17
+Agent: AutoClaw (main)
+Task: Fix the circuit-tab zoom size and replace the curved wire connections with orthogonal (Manhattan) routing.
+
+Work Log:
+- Zoom root cause 1 — aspect mismatch. The canvas box was `h-[clamp(280px,48vh,520px)]` while the viewBox is floored at 920×360 (~2.6:1) and the tab panel is ~1.4-1.9:1, so preserveAspectRatio="meet" letterboxed the drawing into part of the box. The canvas now measures the panel width and sets an explicit pixel height whose aspect EQUALS the viewBox aspect (clamped 240px .. 0.72×viewport); zoom 100% now means "fills the panel".
+- Zoom root cause 2 — the 920×360 layout floor capped fit zoom at the old ZOOM_MAX 2.5, so a small segment could never fill the panel. ZOOM_MAX 2.5 → 6, ZOOM_MIN 0.1 → 0.25, BAND_JUMP_MAX_ZOOM 1.1 → 1.6.
+- Zoom root cause 3 — fitView pinned content to the top-left ({center:false}) leaving dead space right/below. Now centred, with proportional padding max(16, min(40, 4% of content)).
+- Zoom affordances: zoomStep factor 1.2 → 1.25; new shared ZoomControl (Fit / 50 / 100 / 200 %) used by BOTH the card toolbar and the fullscreen overlay (they previously duplicated the readout button); expanded and canvasHeight added to the auto-fit key so fullscreen re-fits.
+- New src/logic/wireRouting.ts — pure orthogonal router. Paths emit only M/H/V (never C/S/Q/A); aligned source/target collapses to a single horizontal run instead of a zero-length vertical. Per-target lanes (WIRE_LANE_GAP 9, WIRE_LANE_OFFSET 18, WIRE_MIN_RUN 6) nest the fan-in corridors so parallel wires cannot overlap; fanOutCounts() drives junction dots.
+- Canvas: replaced the inline bezier `M… C…` with orthogonalWirePath(); added filled junction dots at shared taps (one dot per source, tooltip states the fan-out); wires now use stroke-linejoin="miter" + stroke-linecap="butt" for crisp corners. The `wire-active` dash-flow animation is path-shape agnostic and still works unchanged.
+- Tests — new section 10 (22 checks): no curve commands, M/H/V-only shape, exact endpoints, axis alignment, aligned-wire collapse, deterministic per-target lanes, distinct corridors, nested ordering, forward clamp, fan-out counts, and every wire of the real decoder view routing orthogonally with no NaN. Suite 308 → 330.
+- Gates: verify:logic 330/330 · tsc 0 errors · lint unchanged (only the 2 pre-existing diagnostics in this file) · fresh dev server 200 with 0 console errors, served markup shows 11 orthogonal wires and 0 curves among wires (remaining curved paths are gate BODY symbols, which are supposed to be curved).
+- Note: an earlier `ReferenceError: Cannot access 'circuit' before initialization` in dev.log was a stale hot-reload artifact — declaration order was already correct, and a fresh server on a clean .next showed zero errors.
+
+Stage Summary:
+- Circuit tab now fills its panel on load and after Fit at every form/view combination, with meaningful zoom limits and a preset menu.
+- All wires are right-angle orthogonal with junction dots on shared nets; no bezier wire geometry remains.
+- Explicitly NOT changed: the decorative gate symbols in gateVisuals.tsx (AND/OR/XOR bodies) are still curved by design.
+- Open: corner rounding (currently intentionally sharp), timing/hazard view, gate-layout persistence, pinch-zoom.
+---
+Task ID: 18
+Agent: AutoClaw (main)
+Task: Multi-level (factored) logic in the Circuit tab — plan Phases 1-4.
+
+Work Log:
+- User confirmed the meaning: factored/multi-level logic (not visual layers), and exports stay two-level for v1.
+- Phase 1 — NEW src/logic/factoring.ts. Recursive common-cube factoring PLUS structural hash-consing. The hash-consing stage is load-bearing: the first implementation built a TREE (every signal one consumer), which adds depth but shares nothing; the tests caught it via sharedIntermediates=0. Deterministic tie-breaks (most members → widest cube → lexicographic) so factoring is reproducible. Chosen over kernel/co-kernel extraction: explainable in a teaching UI, marginal extra win on 4-5 variable decoder functions.
+- Phase 2 — NEW src/logic/circuitLayout.ts. Level-based layout for arbitrary depth: longest-path levels, one column per level, barycenter ordering within a column, single downward pack. buildCircuit's hardcoded columns stay untouched, so the two-level paths cannot regress.
+- Phase 3 — buildFactoredCircuit + a new 'tap' node kind (GateType gains 'tap'; evaluateCircuit handles it like 'out'). Taps are labelled shared signals; because a tap feeds several gates the existing wire fan-out and junction dots render the sharing with no special casing.
+- Bug found and fixed while wiring: an intermediate referencing an EARLIER intermediate resolved as a const instead of a tap, because literals were only looked up against primary rails. Intermediate levels are now built with the taps defined so far, so dependencies resolve in order.
+- Phase 4 — 'Multi-level' style chip; badge shows the honest tradeoff, e.g. '6 gates · depth 3 (2-level: 8 gates · 12 literals · depth 2)'; tap rendering on the canvas (SHARED label + consumer count + tooltip); GateInspector explains what a shared signal is. Restricted to the minimized SOP form in segment mode: factoredAvailable = !isCanonical && form==='sop' && mode==='segment'. In decoder mode the chip is DISABLED rather than silently rendering a two-level network under a MULTI-LEVEL badge.
+- Measured results on the BCD table: segment A 3→3 gates but 6→6 literals; segment D 5→5 gates, 10→10 literals, depth 2→3; AC+AD+BC+BD → (A+B)(C+D) is 5→3 gates and 8→6 literals; BD+BE+CD+CE → X1·(B+C) shares one signal across two products. Depth genuinely increases (segment D two-level 5 levels → multi-level 7 levels).
+- Tests — sections 11 and 12 (46 checks): exhaustive equivalence of factored vs two-level on all 8 segments × 16 inputs, canonical Σm equivalence, determinism, acyclicity/defined-before-use, no-sharing fallback, hand-checked textbook identities, tap integrity, and layout invariants (one column per level, no vertical overlap, strictly advancing columns, nodes inside bounds, layout determinism). Suite 330 → 374.
+- Gates: verify:logic 374/374 · tsc 0 errors · dev server 200 with 0 console errors · 11 orthogonal wires still rendering.
+
+Stage Summary:
+- Multi-level synthesis is complete and verified end to end: factoring → netlist → layered layout → UI, with tap nodes making the sharing visible.
+- No regression: the two-level basic/universal paths use their original builder and layout, and the layout engine is verified to agree with computeLevels on two-level circuits.
+- Honest reporting by design: where factoring costs gates or depth instead of saving them (segment D: 5→5 gates, depth 2→3), the badge states both readings rather than claiming a win.
+- Not included, per the agreed scope: full-decoder band factoring (Phase 5, chip disabled there), and Verilog/CircuitVerse export of factored networks (exports remain two-level).
+---
+Task ID: 19
+Agent: AutoClaw (main)
+Task: Phase 5 (multi-level full decoder) + restyle the circuit tab to match the user's textbook-schematic reference image.
+
+Work Log:
+- Phase 5 delivered: NEW src/logic/factoredDecoderCircuit.ts. All eight segments are factored through ONE shared hash-cons context, so a sub-expression used by two segments is computed once for the whole decoder. factoring.ts gained createFactorContext / factorTermsWith (refactor verified behaviour-preserving: 374/374 still passed before any decoder work).
+- Honest finding on cross-segment sharing: for the BCD table the joint build reports 0 cross-segment signals. Reason — eight minimised BCD segments genuinely share no sub-expression, so there is nothing to share at decoder level (the per-segment win is still real: segment D drops 5→4 gates). Isolated and joint factorings agree. The chip therefore remains enabled in decoder mode (it is correct, just not a win for this particular table), and the badge reports the cross-segment count so the result is visible rather than asserted. A test covers the case where sharing DOES occur (two segments with identical covers share their signals).
+- Circuit tab restyled to the reference figure (textbook schematic): inputs are now plain monospace labels with wire stubs (no boxes); outputs are labelled stubs with the terminal circle; gates are monoline with a pale blue body (#adc4de at 20%) and dark outlines instead of the previous green glow; wire colour for logic 1 moved to teal #0f766e; junction dots and inversion bubbles match the reference; pin stubs added to gate inputs and outputs.
+- Legend now carries a schematic key (bubble = inverted output, dot = wires joined, cross = not connected), matching how the reference figure teaches the notation.
+- Decoder view wired to the new builder via a single `decoderView = multiDecoder ?? decoder` accessor, so the band stepper, chips, band labels and inspector work identically for two-level and multi-level. (A scripted bulk rename briefly corrupted several guards with literal PowerShell text; repaired by hand and re-verified — that incident is what the transient dev.log syntax errors were, not a real defect.)
+- Visual verification without a browser: wrote a throwaway SVG → PIL renderer to rasterise the real layout, inspected the image, then deleted the dev scripts. Two bugs in that throwaway tool (a missing transform stack and points accumulating across path commands) were fixed before trusting the output; the final render confirmed clean orthogonal routing, no overlapping gates, no wires through gate bodies.
+- Tests — new section 13 (19 checks): multi-level decoder equivalence vs two-level on all 8 segments × 16 inputs, shared rails, per-band ownership, no dangling operands, no orphaned taps, cross-segment signal reporting cross-checked against an independent wire analysis, determinism, layout invariants (one column per level, no vertical overlap, nodes inside bounds), band sanity, and the identical-covers sharing case. Suite 374 → 393.
+- Gates: verify:logic 393/393 · tsc 0 errors · dev server 200 with 0 console/runtime errors · lint unchanged (only the 2 pre-existing diagnostics in LogicCircuitCard).
+
+Stage Summary:
+- Multi-level logic now works in BOTH views: per segment and as a joint whole-decoder build with a shared factor table.
+- The circuit tab renders as a clean textbook schematic matching the user's reference, with the live signal path still shown (teal) without the earlier dashboard-like glow.
+- Known limitation, reported not hidden: the BCD table yields no cross-segment sharing; the badge shows the count so this is visible.
+- Open: exports remain two-level by agreement; timing/hazard view, gate-layout persistence, pinch-zoom still outstanding.
+---
+Task ID: 20
+Agent: AutoClaw (main)
+Task: Replace the SHARED wrapper with real 74-series gates, show multi-level as LAYERS, extend to POS, and lock down positions/connections for every bits × form combination.
+
+Work Log:
+- User clarified three things: (1) use real logic gates / 74LS-74HC parts rather than a "shared" box, (2) "multi-level" means LAYERS of gates, (3) positions and connections must be correct and stable across 4bit/5bit × SOP/POS/canonical.
+- Removed the 'tap' node kind entirely (GateType no longer has it; evaluateCircuit loses its branch; the canvas tap render and the inspector tap copy are deleted). A sub-expression is now driven by an ORDINARY GATE whose output wire fans out directly to its consumers — no wrapper node anywhere.
+- Layering is now first-class: layoutLayered stamps `layer` on every node, and the canvas draws vertical LAYER n guides (INPUTS / LAYER 1 / LAYER 2 …) in multi-level mode. The badge reads e.g. "MULTI-LEVEL · 6 layers".
+- 74-series part numbers added to the gate reference and the gate inspector (74HC08/74HC11 AND, 74HC32/74HC4075 OR, 74HC04 NOT, 74HC00/74HC10 NAND, 74HC02/74HC27 NOR, 74HC86 XOR, 74HC7266 XNOR). The inspector also reports the node's layer.
+- POS multi-level: new factorCover(terms, form) factors POS by De Morgan duality — complement every literal, factor as SOP, complement back. Both directions are identities, so equivalence is preserved by construction rather than by a separate algorithm.
+- BUG CAUGHT BY THE NEW COMBINATION TESTS: the POS builder hardcoded the SOP identities, so an empty POS cover (segment DP = constant 1) rendered as constant 0 and was wrong on all 16 inputs. Fixed with form-aware termIdentity (1 for a product / 0 for a sum) and rootIdentity (0 for an OR / 1 for an AND), applied at all three identity sites (empty term, empty term list, empty output).
+- Second finding, reported not hidden: on the BCD table a minimised segment factors into a single-consumer chain, so multi-level there is LAYERING (more depth, same gate count) rather than reuse. Segment D actually goes 5→5 gates with depth 2→3. Genuine multi-consumer reuse needs a function that has it, and a test pins that case (verified by scanning the factorer).
+- Tests — new section 14 (17 checks) covering the exact matrix the user named: 4-bit and 5-bit × SOP and POS minimized covers (expression-referenced, not cross-checked against each other) through BOTH the two-level and multi-level builders; canonical Σm and ΠM on both widths; POS-specific assertions (OR term gates present, factoring stats sane, POS basic ≡ POS multi-level); and position/layer stability across rebuilds for every combination. Also rewrote the tap-based section 12/13 assertions to the new direct-wiring model. Suite 399 → 416.
+- Two of my own test assertions were wrong and rewritten rather than relaxed: "a real gate output fans out" (false for the BCD table — now pinned with a constructive reuse case) and the decoder's joint-vs-isolated baseline (was comparing fan-out groups against intermediate counts — now compares driver nodes against intermediates).
+- Gates: verify:logic 416/416 · tsc 0 errors · lint unchanged (only the 2 pre-existing diagnostics) · dev server 200 with 0 console/runtime errors · markup confirms no SHARED label and 74HC refs present.
+
+Stage Summary:
+- The circuit tab now draws plain schematic gates only, in visible layers, with real 74-series part numbers — no synthetic nodes.
+- Multi-level works for SOP and POS at 4 and 5 bits; canonical forms remain two-level by design (factoring an unminimized cover is meaningless) and the chip is disabled there rather than silently mislabelled.
+- One real correctness bug (empty POS covers) was found and fixed; positions/layers are proven stable across rebuilds for every combination.
+- Open: exports remain two-level by agreement; timing/hazard view, gate-layout persistence, pinch-zoom.
+---
+Task ID: 21
+Agent: AutoClaw (main)
+Task: The user reported "the multilevel is confusing" — diagnose and fix the genuine sources of confusion.
+
+Work Log:
+- Reproduced what a user actually sees before changing anything. Three concrete defects found:
+  1. THE BADGE CONTRADICTED ITSELF: it read "MULTI-LEVEL · 5 layers · depth 4 (2-level: ... depth 2)". The two "depth" numbers came from DIFFERENT METRICS — canvas layers (computeLevels, which counts NOT rails) vs the factorer's literal-graph depth (which does not). The same circuit appeared to be both depth 4 and depth 2.
+  2. THREE VOCABULARIES for one concept: "layers" (band guides), "depth" (badge), "level" (TRACE control and readout).
+  3. IT IMPLIED A WIN THAT WASN'T THERE: segment A showed +0 gates and 0 literals saved.
+- Fix 1 — one metric. The tradeoff memo now builds BOTH circuits and reports gates and layers measured the SAME way for both sides, so the two columns are comparable and cannot disagree with the picture.
+- Fix 2 — one vocabulary. "layers" everywhere: badge ("N gates · N layers"), decoder strip, and the TRACE control ("Layer trace — reveal the circuit one logic LAYER at a time", readout "layer n/N").
+- Fix 3 — the chip is renamed MULTI-LEVEL → "Layered", and the badge states the verdict outright: "identical to two-level here (nothing in this cover is worth factoring)", or "saves a gate" / "costs a gate" / "same gates, one stage deeper".
+- Fix 4 — a dedicated explanation paragraph in Layered mode stating that the vertical bands ARE the layers, that a reused sub-expression is an ordinary gate with two wires leaving it (no "shared" box), and — importantly — that on this data-set the minimizer has usually already flattened the cover, so layering often comes out the same size but one stage deeper. It explicitly frames the view as a tradeoff lesson rather than a win.
+- Measurement that motivated the framing, across all 8 segments at 4 bits: SOP layering is better in 1 case (E: 3→2 gates), identical in 3, WORSE in 3 (D/F/G gain a layer for the same gate count). POS is better in 0, identical in 4, WORSE in 4 (A: 3→4 gates, D: 4→6). Net-negative overall — so an unqualified "Multi-level" label was the main source of the confusion. Reported to the user rather than dressed up.
+- Also corrected stale copy: the explain text still said "green paths" from before the textbook-schematic restyle (now teal).
+- Gates: verify:logic 416/416 · tsc 0 errors · dev server 200 with 0 errors · markup verified to contain the "Layered" chip and no bare "depth N" badge text.
+
+Stage Summary:
+- The layering feature is now described in one vocabulary, on one metric, with an explicit verdict per segment — the self-contradiction and the implied-but-absent win are both gone.
+- Honest position recorded: layering is net-negative on the BCD table, so the UI presents it as a tradeoff demonstration rather than an optimisation.
+- Open (user decision): whether to keep a mode that usually costs a layer, restrict it to the cases where it helps, or hide it by default.
+---
+Task ID: 22
+Agent: AutoClaw (main)
+Task: Add a Falstad / CircuitJS1 export.
+
+Work Log:
+- Research first, because the format is external and getting it wrong produces a silently broken circuit. A researcher read the pfalstad/circuitjs1 source plus shipped files; I then verified the load-bearing details myself against the source and the live example file https://www.falstad.com/circuit/circuitjs110/circuits/xor.txt.
+- Format facts confirmed (and two traps found):
+  * Gates are NUMERIC types: AND=150 NAND=151 OR=152 NOR=153 XOR=154 XNOR=431, params `inputCount lastOutputVoltage [highVoltage]`. Confirmed against the shipped xor.txt (`151 96 240 208 240 0 2 0`).
+  * 'L' is the logic INPUT and 'M' the logic OUTPUT probe — note the mnemonic reads backwards from intuition. The research summary had these swapped; corrected from source.
+  * TRAP 1 — SwitchElm.java parses the position token INVERTED for logic inputs ("false" => position 1 => HIGH via LogicInputElm.doStep). Writing true/false would silently invert every input, so integers (0/1) are written.
+  * TRAP 2 — gate input pins are DERIVED geometry (GateElm.setPoints: `16 * i0`, `i0 = -floor(n/2)`, skipping 0 for even n), not literal tokens. Verified against every wire in xor.txt (pins land at ±16 there).
+- NEW src/logic/falstad.ts (~430 lines). Reuses the SAME circuit builders as the on-screen tab, so the exported schematic matches what the user sees.
+- Layout is the hard part and drove most of the work. In CircuitJS1 there is NO junction element: two things connect iff their coordinates are IDENTICAL. So the layout is built to make the two failure modes impossible:
+  * one horizontal row of gates, one column per logic level;
+  * a dedicated routing corridor BELOW every gate;
+  * DISJOINT drop / rise x-bands inside each column gap, so two different nets can never share a vertical x;
+  * one corridor lane per wire, so two nets can never share a horizontal.
+- THREE real bugs found by the new tests and fixed: (1) the gate counter was never incremented (dead code, reported 0 gates); (2) an early layout left a zero-width gap so a wire zigzagged backwards THROUGH the gate body and its output landed exactly on the next gate's pin — an accidental short; (3) drops and rises shared one x-band, so a rise and a drop landed on the same x and read as one conductor.
+- Also corrected one of MY OWN tests that was wrong: it forbade perpendicular wire crossings. CircuitJS1 never splits a wire at a crossing — SimulationManager.makeNodeList() unifies posts ONLY on exact coordinate equality — so a perpendicular crossing is an explicit non-connection and harmless. The test now asserts the two real hazards instead: an endpoint landing ON a foreign run (merges nets, via CircuitElm.pointOnSegmentInterior "strictly inside"), and collinear overlap between different nets (a short). Same-net runs are identified with union-find over shared endpoints so a legitimate fan-out is not flagged.
+- Export menu: "Falstad / CircuitJS1 (.txt)", one file per segment (a single file holding several circuits would risk their corridors colliding, and one file per circuit is the idiomatic shape). Constant-only segments (e.g. DP on the decimal table) are skipped rather than exported as a floating probe.
+- Tests — new section 15 (61 checks): the pinned gate-type ids against the shipped file, gate pin offsets for 2/3//4/5 inputs, header shape, element-line grammar, integer coordinates on the 16px grid, logic inputs never using the true/false words, no dangling wire endpoints (modeling both element posts and wire-to-wire joins), no endpoint on a foreign run, no cross-net collinear overlap, no wire through a gate body, constant-segment skipping, byte-level determinism, and gate-count agreement with the circuit builder. Suite 416 → 477.
+- Verified end to end by generating the real file and eyeballing the netlist: header, L inputs, I inverters, 150/152 gates, M probe, all wires orthogonal on the 16px grid.
+- Gates: verify:logic 477/477 · tsc 0 errors · lint unchanged (the 2 flagged lines are pre-existing in ExportMenu) · dev server 200 with 0 console errors.
+
+Stage Summary:
+- Falstad / CircuitJS1 export works and is verified against the real format rather than a guess; open it at falstad.com/circuit via File → Open File… or "Import From Text".
+- Two silent-corruption traps (inverted logic-input polarity, derived gate pin geometry) were caught from source before shipping, and three real layout bugs were caught by the geometric tests.
+- Not covered (honest limits): the seven-segment DISPLAY element ('157') is not emitted — the export draws the decoder logic and a logic-output probe, not a display; and the export is wired to the current minimized SOP in basic style rather than following the on-screen style chips. Both are deliberate v1 scope, not oversights.
+---
+Task ID: 23
+Agent: AutoClaw (main)
+Task: Add the standard 7-segment pattern set from the reference chart, and create the project documentation (PRD + README).
+
+Work Log:
+- KEY INSIGHT that shaped the whole task: the chart's printed decimal code IS the segment bitmask (bit0 = a … bit6 = g). Verified mechanically — 'A'=119=0b1110111=abcefg, '1'=6=0b110=bc, '8'=127=all seven. So patterns are DERIVED FROM THE CODES rather than read off the picture, which removes any chance of misreading a small glyph. 37 of the 40 chart codes reproduced their bitmask exactly on the first transcription pass; the 3 that did not were my own reading slips, and the arithmetic caught them.
+- Two image reads disagreed on some GLYPH IDENTITIES (they agreed on every number). Rather than guess, I leaned on the fact that the numbers are authoritative and on the chart's own admission that it lists some codes twice (109 for both '5' and 'S', 91 for both 'Z' and '2') — seven segments genuinely cannot distinguish those, so the shared pattern is correct.
+- NEW src/logic/standardPatterns.ts — the 40 chart entries with code, hex, chars, segments and a full per-segment pattern, all derived from the codes; plus segmentsFromCode / patternFromCode / lookups / STANDARD_DIGITS / STANDARD_GLYPHS.
+- NEW built-in preset 'Standard 7-Segment Patterns' (generator 'standard7'), registered in BUILTIN_TABLE_PRESETS and reachable from the preset gallery.
+- DESIGN BUG FOUND AND FIXED by my own test: I first addressed the table by the chart's printed code, which made the preset nearly EMPTY — those codes run 0..127 and need 7 address bits, so a 4-bit space (0..15) reaches only five glyphs. The test 'code 5 holds the digit-5 pattern' failed with an empty string, which is what exposed it. Fixed by addressing by GLYPH ORDER, windowed onto the live code space (4-bit → first 16 glyphs, 5-bit → first 32) — exactly how fonts already work here. The printed codes remain the authoritative reference and are what the tests pin.
+- Tests — new section 16 (69 checks): the bit order a=bit0…g=bit6, the digit encodings against the textbook values (0=0x3F … 9=0x6F), three spot pins from the chart (A=119, 1=6, 8=127), every code round-tripping through its own segments, hex annotation agreement, 40 entries, the shared-code case, the glyph-order windowing, and the preset resolving through buildPresetTable. Suite 477 → 546.
+- NEW PRD.md (~11 sections, 72 numbered requirements, 4 honest [TO CONFIRM] markers) drafted by a documentation subagent against a detailed brief and then reviewed by me. It states the limitations as limitations (layering net-negative on the shipped table, Falstad missing the display element, Verilog/CircuitVerse staying two-level). I then ADDED §4.5a covering the standard pattern set, since the PRD predated this task.
+- NEW README.md — quick start, tab overview, circuit highlights, the standard-pattern explanation with the bitmask arithmetic, the export table, the verification section, the layout map, and the limitations. Every factual claim was checked against the repo rather than assumed: the .env.example path, the real check count (546), the LICENSE (Apache-2.0), all 17 named logic modules existing, and that src/logic is genuinely free of React/DOM/localStorage (the only grep hits are comments).
+- Gates: verify:logic 546/546 · tsc 0 errors · all 17 logic modules present · README claims verified against the tree.
+
+Stage Summary:
+- The canonical chart is now usable in the app as a built-in preset, with patterns derived from the chart's own codes and pinned by test.
+- The project has a PRD and a README; the README's specific claims were each verified rather than written from memory.
+- One design bug (code-addressed preset would have been near-empty) was caught by the new tests before it shipped; two image-reading disagreements were resolved by trusting the arithmetic over the picture.
+---
+Task ID: 24
+Agent: AutoClaw (main)
+Task: Restyle the K-map to match the user's reference image.
+
+Work Log:
+- Compared the reference against the code BEFORE changing anything, which turned out to matter: the LOGIC layer was already exactly right and needed no change. buildKMap already emits Gray-ordered headers (00 01 11 10) and the same minterm grid the reference shows (row 00 = 0 1 3 2, row 01 = 4 5 7 6, row 11 = 12 13 15 14, row 10 = 8 9 11 10), verified by running it and diffing against the image's own numbers. So the work was presentational only.
+- The reference's four group rectangles were also consistent with the existing grouping engine (a 2-cell group is a 2-cell group; the image happens to show four 2-cell groups while BCD segment A minimises to 4- and 8-cell groups, which is a property of the function, not a format difference).
+- Change 1 — the corner DIAGONAL. The classic textbook axis header: one variable label above the diagonal for the COLUMNS (CD) and one below it for the ROWS (AB). Replaced the previous two separate axis labels, which did not make the row/column split obvious at a glance. The diagonal is an inline SVG line so it scales with the cell size.
+- Change 2 — cell layout. Value in the upper-LEFT, minterm index in the lower-RIGHT, both always visible and both unbolded, exactly as the chart draws them. Previously the value was centred/bold and the minterm index was hidden behind a toggle.
+- Change 3 — palette. Map text is green throughout (axis labels, headers, values, minterm indices) instead of muted grey for headers and a colour-coded value. Don't-cares stay amber, which is the one deliberate deviation from the reference: an X must not be mistakable for a chosen 0/1.
+- Change 4 — group outlines. Sharp outline rectangles instead of filled rounded boxes, matching the chart, which shows the cells through the group. A faint tint is retained so overlapping groups stay legible, but the border does the work and the corner radius is gone.
+- Consequence handled honestly: making the minterm index always visible left the old 'minterm #' switch controlling nothing. Rather than delete a control users may rely on, it now toggles an AXIS MINTERM RULER (the minterm number at the head of each row/column band) and is relabelled 'axis minterm #' with a tooltip explaining the change. The cell indices themselves are no longer optional, as in the reference.
+- Mechanical work: the restructure removed one level of nesting, so I had to remove two surplus closing divs; caught immediately by tsc rather than by eye.
+- Gates: verify:logic 546/546 · tsc 0 errors · eslint on KarnaughMapCard 0 problems · dev server 200 with 0 console errors · markup confirmed to contain the diagonal, the emerald axis labels and the new toggle label, and to no longer contain the rounded group class.
+
+Stage Summary:
+- The K-map now reads as the reference does: diagonal corner header, value upper-left, minterm lower-right, all-green text, sharp group outlines.
+- Confirmed by inspection that the underlying Gray ordering and minterm numbering already matched the reference exactly, so nothing in the logic layer was touched — the change is presentational, and the 546-check suite (which asserts the K-map minterm math) stayed green throughout.

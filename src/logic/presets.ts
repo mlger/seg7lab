@@ -35,6 +35,7 @@ import {
   valueToChar,
 } from './truthTable';
 import { buildFontTable, FONT_GLYPHS, type FontGlyph } from './font';
+import { STANDARD_PATTERNS } from './standardPatterns';
 import { isSegmentOutput, parseGlyphEntry } from './validation';
 
 export const PRESET_FILE_FORMAT = 'sevenseg-preset';
@@ -206,6 +207,15 @@ export const BUILTIN_TABLE_PRESETS: TablePresetDef[] = [
     generator: 'excess3',
   },
   {
+    id: 'builtin:standard7',
+    name: 'Standard 7-Segment Patterns',
+    description:
+      "The canonical ASCII 7-segment character set: the chart's printed decimal code IS the segment bitmask (a=bit0 .. g=bit6), so every glyph is stored at that very code, and the table doubles as a reference.",
+    category: 'Codes',
+    inputBits: 4,
+    generator: 'standard7',
+  },
+  {
     id: 'builtin:gray',
     name: 'Gray-Code Counter',
     description: 'Row at each Gray code g(i) = i XOR (i>>1) displays the counter position i (hex). On 5-bit, positions 16-31 become don\'t-cares.',
@@ -280,6 +290,8 @@ export function buildPresetTable(
       );
     case 'excess3':
       return excess3Table(bits, preset.options?.invalidBehavior ?? behavior, existing);
+    case 'standard7':
+      return standardPatternTable(bits, existing);
     case 'aiken':
       return aikenTable(bits, preset.options?.invalidBehavior ?? behavior, existing);
     case 'gray':
@@ -296,6 +308,40 @@ export function buildPresetTable(
     default:
       return presetTable(bits, 'custom', behavior, existing);
   }
+}
+
+/**
+ * Standard 7-segment character patterns as a truth table.
+ *
+ * Each glyph from the canonical chart is stored at the chart's OWN printed
+ * code, which is the segment bitmask itself (a=bit0 .. g=bit6). So the table is
+ * a direct transcription of the reference rather than a re-derivation.
+ *
+ * Two consequences worth knowing:
+ *  - only the addresses the chart actually lists get a pattern; every other
+ *    code is left as a don't-care so the minimizer is free to exploit them;
+ *  - a code the chart prints more than once (e.g. 109 for both the digit 5 and
+ *    the letter S) holds one pattern, which is correct — seven segments cannot
+ *    distinguish those glyphs at all.
+ */
+export function standardPatternTable(bits: InputWidth, existing?: TruthTable): TruthTable {
+  const n = 1 << bits;
+  // Every row starts as a don't-care, then the glyphs are written in order.
+  const rows = Array.from({ length: n }, (_, code) => ({
+    input: code,
+    outputs: dontCareRowX(),
+  })) as TruthTable['rows'];
+
+  // Address by GLYPH ORDER, not by the chart's printed code: those codes are
+  // 0..127 (they are the bitmask) and a 4-bit space only reaches 0..15, so
+  // addressing by code would leave 11 of 16 rows empty. See the note in
+  // ./standardPatterns for why the chart travels as a font instead.
+  for (let i = 0; i < n && i < STANDARD_PATTERNS.length; i++) {
+    rows[i] = { input: i, outputs: { ...STANDARD_PATTERNS[i].pattern } as never };
+  }
+
+  void existing;
+  return { inputBits: bits, rows };
 }
 
 /** Does the live table still equal the preset's table (at the live width)? */

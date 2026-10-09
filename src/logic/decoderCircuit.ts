@@ -12,7 +12,7 @@
  * Pure: no React, no DOM, no store, no I/O.
  */
 import { SEGMENT_NAMES, type Literal, type SegmentName, type Term } from '@/types/simulator';
-import type { Circuit, CNode, CWire } from './circuitNetlist';
+import { gateTypesFor, type GateStyle, type Circuit, type CNode, type CWire } from './circuitNetlist';
 
 export interface DecoderBand {
   seg: SegmentName;
@@ -45,11 +45,13 @@ export function termGroupKey(t: Term): string {
  *   decides the form — the builder is agnostic)
  * @param form 'sop' → term gates are AND, root is OR; 'pos' → mirrored
  * @param varNames input variable names, MSB first
+ * @param style 'basic' (default) or 'universal' De Morgan dual form
  */
 export function buildDecoderCircuit(
   termsBySegment: Record<SegmentName, Term[]>,
   form: 'sop' | 'pos',
   varNames: string[],
+  style: GateStyle = 'basic',
 ): DecoderCircuit {
   const nodes: CNode[] = [];
   const byId = new Map<string, CNode>();
@@ -82,8 +84,7 @@ export function buildDecoderCircuit(
     return not;
   };
 
-  const termGateType = form === 'sop' ? 'and' : 'or';
-  const rootGateType = form === 'sop' ? 'or' : 'and';
+  const { termGate: termGateType, rootGate: rootGateType } = gateTypesFor(form, style);
   const nodeOwner = new Map<string, SegmentName>();
   const bands: DecoderBand[] = [];
   const perSegmentGates = {} as Record<SegmentName, number>;
@@ -100,22 +101,36 @@ export function buildDecoderCircuit(
     const termNodes: CNode[] = [];
     terms.forEach((t, ti) => {
       const pins = literalNodes[ti];
-      if (pins.length <= 1) {
-        if (pins.length === 1) {
-          termNodes.push(pins[0]); // bare rail — shared node, no gate
-        } else {
-          const c = add({
-            id: `c-${seg}-${ti}`, type: 'const', label: '1', constValue: 1, operandIds: [],
-            x: 300, y: cursor, w: 48, h: 36,
-          });
-          nodeOwner.set(c.id, seg);
+      if (style === 'basic' && pins.length === 1) {
+        termNodes.push(pins[0]); // bare rail — shared node, no gate
+      } else if (pins.length === 0) {
+        // Empty term: constant 1 for a product, 0 for a sum. In basic style the
+        // constant IS the term; in universal style it rides through the term
+        // gate, whose inversion delivers the complement the root gate expects.
+        const isSop = form === 'sop';
+        const c = add({
+          id: `c-${seg}-${ti}`, type: 'const', label: isSop ? '1' : '0',
+          constValue: (isSop ? 1 : 0) as 0 | 1, operandIds: [],
+          x: 300, y: cursor, w: 48, h: 36,
+        });
+        nodeOwner.set(c.id, seg);
+        if (style === 'basic') {
           termNodes.push(c);
+        } else {
+          const g = add({
+            id: `t-${seg}-${ti}`, type: termGateType, label: termGateType.toUpperCase(),
+            termIndex: ti, operandIds: [c.id], x: 316, y: cursor, w: 76, h: 48,
+          });
+          nodeOwner.set(g.id, seg);
+          termNodes.push(g);
+          gateCount += 1;
+          cursor += 76;
         }
       } else {
         const h = Math.max(48, pins.length * 26 + 18);
         const g = add({
           id: `t-${seg}-${ti}`, type: termGateType, label: termGateType.toUpperCase(),
-          operandIds: pins.map((p) => p.id), x: 316, y: cursor, w: 76, h,
+          termIndex: ti, operandIds: pins.map((p) => p.id), x: 316, y: cursor, w: 76, h,
         });
         nodeOwner.set(g.id, seg);
         termNodes.push(g);
@@ -132,11 +147,20 @@ export function buildDecoderCircuit(
     if (terms.length === 0) {
       root = add({
         id: `c-${seg}`, type: 'const', label: form === 'sop' ? '0' : '1',
-        constValue: form === 'sop' ? 0 : 1, operandIds: [], x: 560, y: bandTop + 26, w: 48, h: 36,
+        constValue: (form === 'sop' ? 0 : 1) as 0 | 1, operandIds: [], x: 560, y: bandTop + 26, w: 48, h: 36,
       });
       nodeOwner.set(root.id, seg);
-    } else if (distinct.length === 1) {
+    } else if (distinct.length === 1 && style === 'basic') {
       root = distinct[0]; // single term drives the output directly
+    } else if (distinct.length === 1) {
+      // Universal: re-invert the single complemented term with a 1-input gate
+      // (NAND(X) = NOR(X) = X').
+      root = add({
+        id: `r-${seg}`, type: rootGateType, label: rootGateType.toUpperCase(),
+        operandIds: [distinct[0].id], x: 560, y: bandTop + 26, w: 76, h: 48,
+      });
+      nodeOwner.set(root.id, seg);
+      gateCount += 1;
     } else {
       const h = Math.max(48, distinct.length * 26 + 18);
       const mid = bandTop + 8 + (stackBottom - bandTop - 8) / 2;

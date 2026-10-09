@@ -71,6 +71,15 @@ export function GateInspector({
           <span className="ml-1 font-mono">{GATE_INFO[selectedNode.type.toUpperCase()].expr}</span>
         )}
       </p>
+      {/* real part number for this gate, and the layer it sits in */}
+      {GATE_INFO[selectedNode.type.toUpperCase()]?.part && (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          <span className="font-mono">{GATE_INFO[selectedNode.type.toUpperCase()].part}</span>
+          {selectedNode.layer !== undefined && (
+            <span className="ml-2 font-mono">· layer {selectedNode.layer}</span>
+          )}
+        </p>
+      )}
       {selectedNode.operandIds.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {selectedNode.operandIds.map((id, i) => {
