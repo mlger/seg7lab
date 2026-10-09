@@ -983,3 +983,20 @@ Stage Summary:
 - REST surface now flows route → service (use cases) → repository interface → Prisma adapter; business rules (ownership visibility, existence-hiding 404s, optimistic-lock precedence, blob validation) live in services, testable without HTTP or a database.
 - Wire contract proven unchanged by the recorded characterization file; no schema/dependency/visual changes.
 - Known gap accepted per ADR-0007: production Vercel deployment still 500s on the API (pre-existing SQLite-on-serverless issue, needs an owner decision + env config).
+
+---
+Task ID: 26
+Agent: main (Z.ai Code)
+Task: Phase 2a — split the 1,389-line store monolith into slices behind the same '@/lib/store' import surface (ADR-0004), extracting the server-sync engine.
+
+Work Log:
+- Mapped the store's full public surface first (16 consumer files; exports: useSimulator, resolveTablePreset, resolveFontPreset, activeFontGlyphs, attachPersistence, SEGMENT_NAMES) — no consumer changes needed because src/lib/store/ gains an index.ts.
+- Created src/lib/store/: types.ts (SimulatorState verbatim + slice state interfaces), persistence.ts (localStorage keys + persist/persistLibrary/loadLibrary verbatim), presets.ts (pure resolvers + reconcileFont/builtinForMode verbatim), workspace.ts (project-data + UI + truth-table actions verbatim via the Zustand StateCreator slice pattern), library.ts (preset-library + font actions verbatim, sync facade), index.ts (composition + attachPersistence verbatim).
+- Extracted src/lib/preset-sync.ts: the entire fetch/merge/reconcile engine (apiUpsertPreset, apiPutPreset, reconcilePresetConflict, single-flight sync, once-per-id warnings, optimistic-lock tokens) moved verbatim behind a PresetSyncAccess interface (getLibrary/isHydrated/applyLibrary) — dependency-inverted, no store import; wired two-phase in index.ts (engine built after the store exists, library slice receives a lazy thunk).
+- Deleted src/lib/store.ts.
+- Fixed two transcription slips before committing (resetProject must set the BCD builtin preset id/name, not read current state; setInputBits/setInvalidBehavior must call buildPresetTable with the original argument lists).
+
+Stage Summary:
+- Public surface, localStorage keys, persisted JSON shape, action names, lastAction strings, debounce timings all unchanged; tsc 0, eslint 0.
+- Browser E2E (agent-browser): initial hydration from empty storage; display-segment toggle persisted; truth-table cell cycle 1→X persisted and restored after reload; preset gallery apply (allon) regenerates the table; user preset "E2E Sync Test" saved locally AND POSTed to /api/presets (201, server row verified with the owner header — the extracted engine works end-to-end); project create + load through the split store (toProjectData/loadProject) verified on the server and in localStorage; zero console errors.
+- Gates: verify-logic 546/546, verify-api 70/70 (byte-identical), tsc 0, eslint 0.

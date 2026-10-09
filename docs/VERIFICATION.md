@@ -35,7 +35,20 @@ this refactor; recorded as a baseline quirk.
 
 ## Phase evidence
 
-(To be appended per phase. Executed checks only — planned checks live in the plan.)
+### Phase 1 — server clean architecture (2026-10-09)
+
+| Check | Command | Result |
+|---|---|---|
+| **REST contract (the gate)** | fresh DB → dev server → `node scripts/verify-api.mjs` | **70/70, byte-identical to the pre-refactor recording** |
+| Use-case tests (new) | `node --experimental-strip-types --import ./scripts/register-alias.mjs scripts/verify-services.ts` | **62 passed, 0 failed** (visibility, 404/403/409/400 precedence incl. "409 beats 400", P2002/P2025 mappings, corrupt-blob reads, kind-aware preset validation, shared-row semantics) |
+| Pure logic regression | `npm run verify:logic:node` | **546/546** |
+| Lint | `bunx eslint .` | **clean** |
+| Types | `bunx tsc --noEmit` | **clean** |
+| Browser smoke | agent-browser vs `http://localhost:3100` | app renders all tabs; `/api/presets?full=1` → **200** through the new layer (production still 500s per ADR-0007 — that is the deployment, not this code) |
+
+Files: `src/server/{kernel,composition,db}.ts`, `src/server/{projects,presets}/{repository,prisma,service}.ts`, `src/app/api/_lib/http.ts`, 4 rewritten route files, `scripts/verify-api.mjs`, `scripts/verify-services.ts`. Deleted: both `helpers.ts`, `src/lib/db.ts`, `src/lib/owner.ts` (dead). Commit `15479f8`.
+
+Fix during phase: `ApiError` initially used TS constructor parameter properties — incompatible with Node strip-types (the same pre-existing quirk `verify-circuitverse.ts` has); rewritten with explicit field assignments so `verify:services` runs on plain Node.
 
 ## Known gaps
 

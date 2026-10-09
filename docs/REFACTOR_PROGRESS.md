@@ -9,8 +9,8 @@ Status legend: pending · in progress · blocked · **complete**
 | Phase | Scope | Status | Gate result |
 |---|---|---|---|
 | 0 | Baseline + harness + plan | **complete** | verify-logic 546/546 · circuitverse 64,205/64,205 (bun) · eslint 0 · tsc 0 · verify-api 70/70 (deterministic, recorded) |
-| 1 | Server clean architecture | in progress | — |
-| 2a | Store split + preset-sync extraction | pending | — |
+| 1 | Server clean architecture | **complete** | verify-api 70/70 **byte-identical to pre-refactor recording** · verify-services 62/62 (new) · verify-logic 546/546 · eslint 0 · tsc 0 · browser smoke (app renders, API 200) |
+| 2a | Store split + preset-sync extraction | in progress | — |
 | 2b | API client + ProjectManagerCard transport | pending | — |
 | 2c | LogicCircuitCard decomposition | pending | — |
 | 3 | Cross-cutting cleanup + boundary enforcement | pending | — |
@@ -22,13 +22,20 @@ Status legend: pending · in progress · blocked · **complete**
   record/compare modes) + `docs/verification/api-contract.json` baseline recorded
   against the pre-refactor implementation; determinism proven across two fresh-DB
   runs. Planning docs + seven ADRs written. Work on branch `refactor/clean-architecture`.
+- Phase 1: `src/server/` created — `kernel.ts` (framework-free owner/body-guard/
+  error/pagination primitives, ONE copy replacing ~150 duplicated lines),
+  `projects/` + `presets/` (repository contract, Prisma adapter, service with
+  use cases), `composition.ts`, `db.ts` (moved from `src/lib`). Four route files
+  rewritten as thin handlers + `src/app/api/_lib/http.ts` (ApiError → NextResponse
+  mapping). Deleted both mirrored `helpers.ts`, dead `src/lib/owner.ts`, `src/lib/db.ts`.
+  Added `scripts/verify-services.ts` (62 checks, in-memory repos). Committed
+  as `15479f8`.
 
 ## Remaining work
 
-- Phase 1: extract `src/server/**` kernel/services/repositories; rewrite the four
-  route files as thin handlers; delete both mirrored `helpers.ts`; remove dead
-  `src/lib/owner.ts`; add `scripts/verify-services.ts` (in-memory repo).
-- Phase 2a/2b/2c, Phase 3, Phase 4 — see the plan.
+- Phase 2a: split `src/lib/store.ts` into `src/lib/store/` slices behind the same
+  import surface; extract `src/lib/preset-sync.ts` (ADR-0004).
+- Phase 2b/2c, Phase 3, Phase 4 — see the plan.
 
 ## Active blockers
 
@@ -46,9 +53,9 @@ First-party areas and their refactor status:
 | Area | Path | Status |
 |---|---|---|
 | Pure logic layer | `src/logic/**` | untouched (ADR-1; comment fixes + 1 function move in Phase 3) |
-| Server transport | `src/app/api/**` | Phase 1 |
-| Server services/infra | `src/server/**` (new) | Phase 1 |
-| Shared contract | `src/types/api.ts` | Phase 1 (ApiResult wired) |
+| Server transport | `src/app/api/**` | **done (Phase 1)** |
+| Server services/infra | `src/server/**` | **done (Phase 1)** |
+| Shared contract | `src/types/api.ts` | Phase 1 (ApiResult wired in Phase 2b) |
 | Client state | `src/lib/store*` | Phase 2a |
 | Client sync engine | `src/lib/preset-sync.ts` (new) | Phase 2a |
 | Client transport | `src/lib/api-client.ts` (new) | Phase 2b |
