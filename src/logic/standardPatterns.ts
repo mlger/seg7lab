@@ -26,6 +26,7 @@
  * chart prints twice are kept in both places.
  */
 import { SEGMENT_NAMES, type SegmentName } from '@/types/simulator';
+import { FONT_GLYPHS } from './font';
 
 /** Bit position of each segment in the chart's printed code. */
 const SEGMENT_BIT: Record<SegmentName, number> = {
@@ -157,3 +158,59 @@ export const STANDARD_GLYPHS: { char: string; segments: string }[] =
 
 /** Index of each digit glyph inside STANDARD_GLYPHS (chart row 3 starts at 26). */
 export const STANDARD_DIGIT_START = STANDARD_PATTERNS.findIndex((p) => p.chars === '0');
+
+/* ------------------------------------------------------------------ */
+/* The Roman-letters reference chart (the standard-pattern picture)    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The ROMAN-LETTERS chart: the classic reference picture titled "Example set
+ * of Roman letters" — three rows, Uppercase A–Z, lowercase a–z and
+ * punctuation, each glyph drawn exactly as lit on a seven-segment display
+ * (kept in the repo as docs/images/roman-letters-chart.png).
+ *
+ * The glyph shapes are IDENTICAL to the reference chart behind `./font`
+ * (FONT_GLYPHS, the Chart Font) — verified glyph-for-glyph against the
+ * picture pixels (74/74). To keep a single source of truth the rows below
+ * are DERIVED from FONT_GLYPHS, so the picture and the Chart Font can never
+ * drift apart; the verification suite pins both against the picture's
+ * machine-read ground truth.
+ *
+ * Each glyph also carries the same code convention as the 40-entry chart
+ * above: bit0 = a … bit6 = g, so 'A' = 119, 'D' = 63 (drawn as "0"),
+ * 'I' = 6 (drawn as "1"). The two charts agree on every glyph they share
+ * (A, C, E, F, G, L, P, S, U, Z, b, d, h, o, r, t, u …) — they are readings
+ * of the same segment conventions; the 40-entry chart prints the codes while
+ * this one prints the three rows of Roman letters.
+ */
+export interface RomanPattern {
+  /** The character the chart draws (single character, may be a space). */
+  char: string;
+  /** The segment bitmask of the glyph: bit0 = a … bit6 = g (DP never used). */
+  code: number;
+  /** Same value in hex, chart annotation style. */
+  hex: string;
+  /** Lit segments, canonically ordered A..G. */
+  segments: string;
+  /** The pattern as a per-segment map (DP always 0 — the chart never lights it). */
+  pattern: Record<SegmentName, 0 | 1>;
+}
+
+/** Turn a lit-segment string (subset of A..G) into the chart's bitmask code. */
+export function codeFromSegments(segments: string): number {
+  let code = 0;
+  for (const seg of segments) code |= 1 << SEGMENT_BIT[seg as SegmentName];
+  return code;
+}
+
+/** Every glyph of the Roman-letters picture, in chart order (Uppercase, Lowercase, Punctuation). */
+export const ROMAN_LETTER_PATTERNS: RomanPattern[] = FONT_GLYPHS.map((g) => {
+  const code = codeFromSegments(g.segments);
+  return {
+    char: g.char,
+    code,
+    hex: `0x${code.toString(16).toUpperCase().padStart(2, '0')}`,
+    segments: g.segments,
+    pattern: patternFromCode(code),
+  };
+});

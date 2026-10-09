@@ -85,6 +85,29 @@ Consolidated browser E2E (agent-browser, fresh DB): default load → truth-table
 
 **Final acceptance status: PASS.** The refactor's compatibility requirement (API contract, exports, user flows, visual presentation, persisted shapes) is verified to the extent listed; gaps below are stated explicitly.
 
+### Roman letters standard pattern (2026-10-09)
+
+The owner-supplied reference picture ("Example set of Roman letters", 3 rows:
+Uppercase / Lowercase / Punctuation, 74 glyphs) added as a standard pattern.
+
+| Check | Command | Result |
+|---|---|---|
+| Picture ground truth | pixel-level extraction of the uploaded chart (red = lit over grey ghost), then diffed against `FONT_GLYPHS` | **74/74 glyphs identical — the picture is exactly the Chart Font** |
+| Pure logic suite | `bun run verify:logic` | **582 passed, 0 failed** (546 + 36 new: picture pin, roman code convention, windowing, registration, E-275 regression) |
+| Lint / types | `bunx eslint .` · `bunx tsc --noEmit` | **clean** |
+| Boundary / services / CircuitVerse | `bun run verify:boundaries` · `npm run verify:services` · `bun run scripts/verify-circuitverse.ts` | **0 violations · 62/62 · 64,205/64,205** |
+
+Changes: `RomanPattern` + `ROMAN_LETTER_PATTERNS` + `codeFromSegments` in
+`src/logic/standardPatterns.ts` (derived from `FONT_GLYPHS` — single source of
+truth, pinned to the picture by the new fixture), generator `'roman'` +
+`builtin:roman` preset + `romanPatternTable` in `src/logic/presets.ts`,
+`'roman'` in the `PresetGenerator` union, width-regen list in
+`src/lib/store/workspace.ts`. Two latent defects fixed on the same paths:
+`'standard7'` (and `'roman'`) were missing from the preset-file `GENERATORS`
+import whitelist (E-275 on import) and from the width-change regen list
+(wrong resize behavior). Reference image committed at
+`docs/images/roman-letters-chart.png`.
+
 ## Known gaps
 
 - verify-api cannot exercise: server-generated cuid ids (the harness always

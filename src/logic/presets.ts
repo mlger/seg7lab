@@ -35,7 +35,7 @@ import {
   valueToChar,
 } from './truthTable';
 import { buildFontTable, FONT_GLYPHS, type FontGlyph } from './font';
-import { STANDARD_PATTERNS } from './standardPatterns';
+import { ROMAN_LETTER_PATTERNS, STANDARD_PATTERNS } from './standardPatterns';
 import { isSegmentOutput, parseGlyphEntry } from './validation';
 
 export const PRESET_FILE_FORMAT = 'sevenseg-preset';
@@ -199,6 +199,15 @@ export const BUILTIN_TABLE_PRESETS: TablePresetDef[] = [
     generator: 'font',
   },
   {
+    id: 'builtin:roman',
+    name: 'Roman Letters Chart (74 glyphs)',
+    description:
+      'The Roman-letters reference picture (Uppercase / Lowercase / Punctuation rows, exactly as drawn — B = "8", D/O = "0") as a standard pattern: glyph i lands on code i (4-bit → A–P, 5-bit → A–z), the rest are don\u2019t-cares, and the table stays editable in custom mode. Reference image: docs/images/roman-letters-chart.png.',
+    category: 'Letters',
+    inputBits: 4,
+    generator: 'roman',
+  },
+  {
     id: 'builtin:excess3',
     name: 'Excess-3 Code',
     description: 'Self-complementing BCD code: digit d is stored at code d+3 (0011-1100). Classic minimization exercise.',
@@ -292,6 +301,8 @@ export function buildPresetTable(
       return excess3Table(bits, preset.options?.invalidBehavior ?? behavior, existing);
     case 'standard7':
       return standardPatternTable(bits, existing);
+    case 'roman':
+      return romanPatternTable(bits);
     case 'aiken':
       return aikenTable(bits, preset.options?.invalidBehavior ?? behavior, existing);
     case 'gray':
@@ -347,6 +358,31 @@ export function standardPatternTable(bits: InputWidth, existing?: TruthTable): T
   return { inputBits: bits, rows };
 }
 
+/**
+ * The Roman-letters chart as a truth table (the reference picture).
+ *
+ * Mirrors standardPatternTable: the chart is addressed by GLYPH ORDER onto
+ * the live code space (4-bit → first 16 glyphs A–P, 5-bit → first 32 A–z);
+ * rows beyond the window stay don't-cares so the minimizer is free to use
+ * them. Unlike the 'font' generator this builds a plain editable table — no
+ * font-window semantics — so the picture's chart can be applied (and then
+ * tweaked) exactly like the other standard patterns.
+ */
+export function romanPatternTable(bits: InputWidth): TruthTable {
+  const n = 1 << bits;
+  // Every row starts as a don't-care, then the glyphs are written in order.
+  const rows = Array.from({ length: n }, (_, code) => ({
+    input: code,
+    outputs: dontCareRowX(),
+  })) as TruthTable['rows'];
+
+  for (let i = 0; i < n && i < ROMAN_LETTER_PATTERNS.length; i++) {
+    rows[i] = { input: i, outputs: { ...ROMAN_LETTER_PATTERNS[i].pattern } as never };
+  }
+
+  return { inputBits: bits, rows };
+}
+
 /** Does the live table still equal the preset's table (at the live width)? */
 export function matchesTablePreset(
   table: TruthTable,
@@ -383,7 +419,7 @@ export function newUserId(): string {
   return `user:${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-const GENERATORS: readonly PresetGenerator[] = ['bcd', 'hex', 'font', 'excess3', 'gray', 'aiken', 'allon', 'alloff', 'literal'];
+const GENERATORS: readonly PresetGenerator[] = ['bcd', 'hex', 'font', 'excess3', 'gray', 'aiken', 'standard7', 'roman', 'allon', 'alloff', 'literal'];
 const CATEGORIES: readonly PresetCategory[] = ['Digits', 'Codes', 'Letters', 'Boundary', 'User'];
 
 /** Validate a literal truth table (user presets must be exact). */

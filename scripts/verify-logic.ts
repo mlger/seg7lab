@@ -41,8 +41,12 @@ import {
 import {
   STANDARD_PATTERNS, STANDARD_DIGITS, STANDARD_GLYPHS, STANDARD_DIGIT_START,
   segmentsFromCode, standardPatternForChar,
+  ROMAN_LETTER_PATTERNS, codeFromSegments,
 } from '@/logic/standardPatterns';
-import { standardPatternTable, findBuiltinTablePreset, buildPresetTable } from '@/logic/presets';
+import {
+  standardPatternTable, romanPatternTable, findBuiltinTablePreset, buildPresetTable,
+  parsePresetFile, presetDisplayMode, matchesTablePreset, PRESET_FILE_FORMAT,
+} from '@/logic/presets';
 import { FONT_GLYPHS } from '@/logic/font';
 import { buildDecoderCircuit } from '@/logic/decoderCircuit';
 import { mintermToTerm, maxtermToTerm } from '@/logic/expressions';
@@ -2255,6 +2259,203 @@ section('16. standard patterns: the chart\'s code IS the segment bitmask');
     equal('its generator is standard7', found?.generator, 'standard7');
     const built = buildPresetTable(found!, 4, 'dontcare', FONT_GLYPHS);
     equal('applying the preset yields a 16-row table', built.rows.length, 16);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 17. roman letters chart (the reference picture)                      */
+/* ------------------------------------------------------------------ */
+
+section('17. roman letters: the reference picture as a standard pattern');
+
+{
+  /* --- Ground truth straight off the picture --------------------------- */
+  {
+    // The reference picture (docs/images/roman-letters-chart.png, titled
+    // "Example set of Roman letters") was transcribed pixel-by-pixel — red
+    // segments read as lit over the grey ghost outline, three rows
+    // (Uppercase / Lowercase / Punctuation). These rows are that machine
+    // reading, INDEPENDENT of any source file, so the Chart Font and the
+    // roman pattern list are both pinned against the picture itself.
+    const PICTURE: { char: string; segments: string }[] = [
+      // ---- Uppercase (A-Z) ----
+      { char: 'A', segments: 'ABCEFG' },
+      { char: 'B', segments: 'ABCDEFG' }, // drawn as the full 8
+      { char: 'C', segments: 'ADEF' },
+      { char: 'D', segments: 'ABCDEF' }, // drawn as 0
+      { char: 'E', segments: 'ADEFG' },
+      { char: 'F', segments: 'AEFG' },
+      { char: 'G', segments: 'ACDEF' },
+      { char: 'H', segments: 'BCEFG' },
+      { char: 'I', segments: 'BC' }, // drawn as 1
+      { char: 'J', segments: 'BCDE' },
+      { char: 'K', segments: 'BDEFG' },
+      { char: 'L', segments: 'DEF' },
+      { char: 'M', segments: 'ACEG' },
+      { char: 'N', segments: 'ABCEF' },
+      { char: 'O', segments: 'ABCDEF' }, // drawn as 0
+      { char: 'P', segments: 'ABEFG' },
+      { char: 'Q', segments: 'ABDFG' },
+      { char: 'R', segments: 'ABDEFG' },
+      { char: 'S', segments: 'ACDFG' },
+      { char: 'T', segments: 'ABDF' },
+      { char: 'U', segments: 'BCDEF' },
+      { char: 'V', segments: 'BCDEF' },
+      { char: 'W', segments: 'BDFG' },
+      { char: 'X', segments: 'ACEG' },
+      { char: 'Y', segments: 'BCDFG' },
+      { char: 'Z', segments: 'ABDEG' },
+      // ---- Lowercase (a-z) ----
+      { char: 'a', segments: 'CDG' },
+      { char: 'b', segments: 'CDEFG' },
+      { char: 'c', segments: 'DEG' },
+      { char: 'd', segments: 'BCDEG' },
+      { char: 'e', segments: 'DE' },
+      { char: 'f', segments: 'EFG' },
+      { char: 'g', segments: 'ACDG' },
+      { char: 'h', segments: 'CEFG' },
+      { char: 'i', segments: 'ADE' },
+      { char: 'j', segments: 'ACD' },
+      { char: 'k', segments: 'ADFG' },
+      { char: 'l', segments: 'EF' },
+      { char: 'm', segments: 'ACE' },
+      { char: 'n', segments: 'CEG' },
+      { char: 'o', segments: 'CDEG' },
+      { char: 'p', segments: 'ABEFG' },
+      { char: 'q', segments: 'ABCFG' },
+      { char: 'r', segments: 'EG' },
+      { char: 's', segments: 'CD' },
+      { char: 't', segments: 'DEFG' },
+      { char: 'u', segments: 'CDE' },
+      { char: 'v', segments: 'CDE' },
+      { char: 'w', segments: 'BDF' },
+      { char: 'x', segments: 'CE' },
+      { char: 'y', segments: 'BCDFG' },
+      { char: 'z', segments: 'DG' },
+      // ---- Punctuation (chart order) ----
+      { char: '"', segments: 'BF' },
+      { char: "'", segments: 'F' },
+      { char: '=', segments: 'DG' },
+      { char: '-', segments: 'G' },
+      { char: '_', segments: 'D' },
+      { char: ' ', segments: '' },
+      { char: '%', segments: 'BEG' },
+      { char: '^', segments: 'ABF' },
+      { char: ':', segments: 'DG' }, // renders like '=' — the chart shows both
+      { char: ';', segments: 'DE' },
+      { char: '/', segments: 'BEG' },
+      { char: '\\', segments: 'CFG' },
+      { char: '`', segments: 'AB' },
+      { char: '<', segments: 'AFG' },
+      { char: '>', segments: 'ABG' },
+      { char: '#', segments: 'BCDG' },
+      { char: '{', segments: 'BCG' },
+      { char: '}', segments: 'EFG' },
+      { char: '[', segments: 'ADEF' },
+      { char: ']', segments: 'ABCD' },
+      { char: '(', segments: 'ADEF' }, // renders like '[' — the chart shows both
+      { char: ')', segments: 'ABCD' }, // renders like ']' — the chart shows both
+    ];
+    equal('the picture shows 74 glyphs', PICTURE.length, 74);
+    equal('the chart font has one glyph per picture cell', FONT_GLYPHS.length, PICTURE.length);
+    const mismatches = FONT_GLYPHS
+      .map((g, i) => ({ g, p: PICTURE[i] }))
+      .filter(({ g, p }) => !p || g.char !== p.char || g.segments !== p.segments)
+      .map(({ g, p }) => `${g.char}:${g.segments} vs ${p ? `${p.char}:${p.segments}` : '(missing)'}`);
+    check('the chart font matches the picture glyph for glyph',
+      mismatches.length === 0, mismatches.join(',') || '(none)');
+  }
+
+  /* --- ROMAN_LETTER_PATTERNS: derived, code convention pinned ---------- */
+  {
+    const byChar = (ch: string) => ROMAN_LETTER_PATTERNS.find((p) => p.char === ch)!;
+    equal('the roman chart lists 74 patterns', ROMAN_LETTER_PATTERNS.length, 74);
+    check('every code round-trips through its segments',
+      ROMAN_LETTER_PATTERNS.every((p) => codeFromSegments(p.segments) === p.code
+        && segmentsFromCode(p.code) === p.segments),
+      ROMAN_LETTER_PATTERNS.filter((p) => codeFromSegments(p.segments) !== p.code)
+        .map((p) => `${p.char}=${p.code}`).join(',') || '(none)');
+    check('no roman pattern lights DP',
+      ROMAN_LETTER_PATTERNS.every((p) => p.pattern.DP === 0));
+    check('hex annotation matches the code',
+      ROMAN_LETTER_PATTERNS.every((p) => parseInt(p.hex.slice(2), 16) === p.code));
+    // Spot pins, code = bitmask (a=bit0 .. g=bit6):
+    equal("'A' is code 119 — the same code as the 40-entry chart's A", byChar('A').code, 119);
+    equal("'A' lights a b c e f g", byChar('A').segments, 'ABCEFG');
+    equal("'B' is code 127 (drawn as the full 8)", byChar('B').code, 127);
+    equal("'D' is code 63 (drawn as 0, same as the digit)", byChar('D').code, 63);
+    equal("'I' is code 6 (drawn as 1, same as the digit)", byChar('I').code, 6);
+    equal("'U' is code 62", byChar('U').code, 62);
+    equal("lowercase 'l' is code 48 (the two left bars)", byChar('l').code, 48);
+    equal("lowercase 'z' is code 72", byChar('z').code, 72);
+    equal('space is code 0 (nothing lit)', byChar(' ').code, 0);
+    equal("'-' is code 64 (the middle bar only)", byChar('-').code, 64);
+    equal("'_' is code 8 (the bottom bar only)", byChar('_').code, 8);
+    // The 40-entry chart and the roman picture are readings of the same
+    // segment conventions: every glyph they share carries the same code.
+    check('the roman and code charts agree on the glyphs they share',
+      ['A', 'C', 'E', 'F', 'G', 'L', 'P', 'S', 'U', 'Z', 'b', 'd', 'h', 'o', 'r', 't', 'u']
+        .every((ch) => {
+          const roman = byChar(ch);
+          const codeChart = standardPatternForChar(ch);
+          return roman !== undefined && codeChart !== undefined && roman.code === codeChart.code;
+        }));
+  }
+
+  /* --- The table windows the picture by glyph order -------------------- */
+  {
+    const table = romanPatternTable(4);
+    equal('4-bit table has 16 rows', table.rows.length, 16);
+    check('rows are indexed positionally 0..15',
+      table.rows.every((r, i) => r.input === i));
+    equal('row 0 holds A',
+      SEGMENT_NAMES.filter((s) => table.rows[0].outputs[s] === 1).join(''), 'ABCEFG');
+    equal('row 8 holds I (the right bars)',
+      SEGMENT_NAMES.filter((s) => table.rows[8].outputs[s] === 1).join(''), 'BC');
+    const table5 = romanPatternTable(5);
+    equal('5-bit table has 32 rows', table5.rows.length, 32);
+    equal('5-bit row 26 holds the first lowercase glyph a',
+      SEGMENT_NAMES.filter((s) => table5.rows[26].outputs[s] === 1).join(''), 'CDG');
+    check('every 5-bit row inside the chart range is filled',
+      table5.rows.every((r) => SEGMENT_NAMES.some((s) => r.outputs[s] === 1)));
+    check('the table minimises without error',
+      computeEngines(table, {}, {}, ['A', 'B', 'C', 'D']).A !== undefined);
+  }
+
+  /* --- The preset is registered, applies, and imports ------------------ */
+  {
+    const found = findBuiltinTablePreset('builtin:roman');
+    check('the preset is registered', found !== undefined);
+    equal('its generator is roman', found?.generator, 'roman');
+    equal('its category is Letters', found?.category, 'Letters');
+    const built = buildPresetTable(found!, 4, 'dontcare', FONT_GLYPHS);
+    equal('applying the preset yields a 16-row table', built.rows.length, 16);
+    check('applying matches the preset (round-trip through matchesTablePreset)',
+      matchesTablePreset(built, found!, 'dontcare', FONT_GLYPHS));
+    equal('its display mode is custom (a plain editable table)',
+      presetDisplayMode(found!), 'custom');
+  }
+
+  /* --- The generator whitelist admits the standard patterns ------------ */
+  {
+    // E-275 regression: 'standard7' was missing from the import whitelist,
+    // so a sevenseg-preset file carrying it could never import.
+    const standard7File = {
+      format: PRESET_FILE_FORMAT, version: 1, kind: 'table',
+      preset: { name: 'x', generator: 'standard7', category: 'Codes', inputBits: 4 },
+    };
+    check('a standard7 preset file imports cleanly (E-275 fixed)',
+      parsePresetFile(standard7File).ok === true,
+      parsePresetFile(standard7File).errors.join(';'));
+    const romanFile = {
+      format: PRESET_FILE_FORMAT, version: 1, kind: 'table',
+      preset: { name: 'x', generator: 'roman', category: 'Letters', inputBits: 4 },
+    };
+    check('a roman preset file imports cleanly',
+      parsePresetFile(romanFile).ok === true,
+      parsePresetFile(romanFile).errors.join(';'));
+    equal('the imported roman preset keeps its generator',
+      parsePresetFile(romanFile).tablePreset?.generator, 'roman');
   }
 }
 

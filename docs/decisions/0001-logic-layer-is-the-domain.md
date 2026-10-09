@@ -7,7 +7,7 @@
 The refactor brief asks for Domain / Application / Infrastructure / Presentation layering.
 `src/logic/` (22 modules, ~4,300 lines) already satisfies the domain + application
 contract: it is pure (no React, no DOM, no framework imports), dependency-free at the
-bottom of the module graph, and its behavior is pinned by 546 logic checks and 64,205
+bottom of the module graph, and its behavior is pinned by 582 logic checks and 64,205
 CircuitVerse checks.
 
 A textbook rename would move it to `src/domain/` + `src/application/`, rewriting
