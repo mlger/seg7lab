@@ -1049,3 +1049,17 @@ Stage Summary:
 - The logic layer is now provably pure (was 99% before — the two DOM/utils leaks are gone); the architecture is mechanically enforced (npm run verify:boundaries + eslint fail on violations).
 - verify-logic 546/546 and verify-circuitverse 64,205/64,205 after the moves — byte-level behavior proof for the logic layer; tsc 0, eslint 0; browser smoke OK.
 - One user-visible text change (deliberate, flagged): the builtin:standard7 preset description in the gallery now tells the truth about glyph-order windowing.
+
+---
+Task ID: 30
+Agent: main (Z.ai Code)
+Task: Phase 4 — final verification sweep + documentation (README, AGENTS, ARCHITECTURE) + branch delivery.
+
+Work Log:
+- Final acceptance sweep, executed in order: verify-logic 546/546; verify-circuitverse 64,205/64,205 (bun); verify-services 62/62; verify-boundaries 61 imports / 0 violations; tsc clean; eslint clean (layer rules active); verify-api 70/70 byte-identical to the pre-refactor baseline (fresh DB); bunx next build SUCCESS (5 routes, typecheck included). Consolidated browser E2E on a fresh DB: truth-table cell cycle 1→X → K-map shows X, expressions re-derive, circuit badge drops 5→2 gates in response (the everything-derived loop after all phases); export menu (all 11 items) + CSV export; Projects cloud mode with 200s on both APIs; zero console/server errors.
+- Documentation finalized: docs/ARCHITECTURE.md (layer map, directory structure, dependency-diagram mermaid, request flow, frontend data flow, initialization, validation/auth/errors/config, boundaries, extension recipes); AGENTS.md (module ownership, layer rules, verified commands, conventions, how-to-add-features, traps); README.md (verification section with the new suites, layout tree, documentation index); docs/REFACTOR_PROGRESS.md final (all phases complete + coverage checklist); docs/VERIFICATION.md final (per-phase evidence + 8-gate acceptance table + gaps); all cross-links verified to resolve.
+- One deliberate user-visible text correction (flagged in Phase 3 + VERIFICATION.md): the builtin:standard7 preset description now describes glyph-order windowing truthfully.
+
+Stage Summary:
+- Final acceptance: PASS. 8 verification gates green, production build green, golden-path E2E green, byte-identical REST contract.
+- Delivery: branch refactor/clean-architecture, commits 15479f8 → (this one); main untouched (Vercel auto-deploy unaffected until the owner merges).

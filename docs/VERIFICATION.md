@@ -50,15 +50,57 @@ Files: `src/server/{kernel,composition,db}.ts`, `src/server/{projects,presets}/{
 
 Fix during phase: `ApiError` initially used TS constructor parameter properties — incompatible with Node strip-types (the same pre-existing quirk `verify-circuitverse.ts` has); rewritten with explicit field assignments so `verify:services` runs on plain Node.
 
+### Phase 2a — store split (2026-10-09)
+
+Browser E2E (agent-browser, evidence recorded in worklog Task 26): hydration from empty storage; display toggle persisted; truth-table cell cycle 1→X persisted and restored after reload; preset apply (allon); user preset saved locally AND POSTed (`/api/presets` → 201, row verified server-side with the owner header — the extracted sync engine works end-to-end); project create + load through the split store. `verify-logic` 546/546 · `verify-api` 70/70 · tsc 0 · eslint 0. Commit `dc67d41`.
+
+### Phase 2b — api-client + Projects hook (2026-10-09)
+
+Browser E2E (worklog Task 27): cloud create (server row verified) · **induced offline** (network route `**/api/projects*` aborted): Local mode badge + fallback banner + localStorage-only list · offline create · unblock + refresh → SQLite badge + push-up POST verified server-side (client-kept UUID id) · duplicate · delete via AlertDialog · render-phase name sync against the persisted workspace name. tsc 0 · eslint 0 (the react-hooks `set-state-in-effect` error resolved by the codebase's render-phase sync idiom, not by suppression). Commit `b7aacfc`.
+
+### Phase 2c — circuit card decomposition (2026-10-09)
+
+Browser E2E (worklog Task 28): TRACE toggle + layer stepper; Full decoder mode + band chips + stepping (`aria-current` moves); fullscreen toolbar (band stepper with center letter, zoom, TRACE, exit); zoom-in inside fullscreen; Escape exits; sweep player play/pause; zero console errors. Byte-diff protocol on moved JSX (subagent-verified). tsc 0 · eslint 0. Commit `4a7388d`.
+
+### Phase 3 — cross-cutting cleanup + boundaries (2026-10-09)
+
+`verify-logic` **546/546** and `verify-circuitverse` **64,205/64,205** after moving `binary.ts` into `src/logic` and the comment/description fixes — proof the logic layer is behavior-identical. `verify:boundaries` 61 imports, 0 violations. eslint 0 with the new layer rules active. Browser smoke: zoom works through the moved `getViewportTransform` (104% → 135%), 16 truth-table rows render, badge "SOP · 5 gates · 5 layers". Commit `4b8fbac`.
+
+### Phase 4 — final acceptance (2026-10-09)
+
+Full sweep, executed in order on a clean checkout of the branch:
+
+| # | Check | Command | Result |
+|---|---|---|---|
+| 1 | Pure logic suite | `node --experimental-strip-types --import ./scripts/register-alias.mjs scripts/verify-logic.ts` | **546 passed, 0 failed** |
+| 2 | CircuitVerse geometry | `bun run scripts/verify-circuitverse.ts` | **64,205 passed, 0 failed** (10 cases) |
+| 3 | Service use cases | `npm run verify:services` | **62 passed, 0 failed** |
+| 4 | Layer boundaries | `npm run verify:boundaries` | **61 imports checked, 0 violations** |
+| 5 | Types | `bunx tsc --noEmit` | **clean** |
+| 6 | Lint (incl. layer rules) | `bunx eslint .` | **clean** |
+| 7 | **REST contract** | fresh DB → dev server → `node scripts/verify-api.mjs` | **70/70, byte-identical to the pre-refactor baseline** |
+| 8 | Production build | `bunx next build` | **success** — compiled, typechecked, 5 routes generated (`/`, `/api/projects`, `/api/presets` + `[id]`s) |
+
+Consolidated browser E2E (agent-browser, fresh DB): default load → truth-table cell cycle 1→X → **K-map cell shows X, expressions re-derive (Σm/POS/minimized present), circuit gate count drops 5→2 in response to the don't-care** (the everything-derived loop works end-to-end after all phases) → export menu with all 11 items + CSV export toast → Projects tab in cloud mode (`/api/presets?full=1` 200, `/api/projects?full=1&limit=200` 200) → zero console errors, zero server-log errors.
+
+**Final acceptance status: PASS.** The refactor's compatibility requirement (API contract, exports, user flows, visual presentation, persisted shapes) is verified to the extent listed; gaps below are stated explicitly.
+
 ## Known gaps
 
-- verify-api cannot exercise: server-generated cuid ids, corrupt-blob reads
-  (all writes validate first), concurrent request races. Corrupt-blob and
-  precedence logic are covered by `scripts/verify-services.ts` (Phase 1) at the
-  use-case level.
-- No automated UI tests exist; user flows are verified by scripted agent-browser
-  sweeps (recorded per phase below).
-- `next build` production build: run at Phase 4.
+- verify-api cannot exercise: server-generated cuid ids (the harness always
+  supplies client ids) and true concurrent request races. Corrupt-blob reads
+  and the error-precedence rules ARE covered by `scripts/verify-services.ts`
+  at the use-case level (in-memory repositories).
+- No automated UI test framework exists (none was added — ADR-0005 froze
+  dependencies); user flows were verified by scripted agent-browser sweeps,
+  recorded per phase above. Visual pixel-equality was verified by rendering,
+  not by screenshot diffing.
+- The production `next build` ran against a local SQLite `DATABASE_URL`; the
+  Vercel deployment itself was not exercised (its API is broken pre-existing —
+  ADR-0007).
+- 4 untracked-by-design areas were reviewed but intentionally not modified:
+  stock shadcn primitives (`src/components/ui/**`), `prisma/**` (no schema
+  change), the app shell, and `src/lib/{useEngine,colors,client-owner}.ts`.
 
 ## Pre-existing defects (reported, not fixed — ADR-0007)
 

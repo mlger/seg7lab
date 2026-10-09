@@ -78,12 +78,25 @@ The preset applies by **glyph order**, windowed onto the live code space (4-bit 
 The pure logic layer has a permanent test suite:
 
 ```bash
-npm run verify:logic:node     # 546 checks
+npm run verify:logic:node     # 546 checks — parser, minimiser, K-maps,
+                              #   expressions, netlists, wire routing, factoring,
+                              #   Falstad geometry, standard patterns, determinism
 ```
 
-It runs on plain Node (no Bun needed) via `scripts/register-alias.mjs`. It covers the parser, minimiser, K-maps, expressions, project validation, the circuit netlists and evaluators, wire routing, factoring, the full-decoder view, every bits × form × style combination, the Falstad netlist geometry, and the standard patterns — including geometric invariants such as *no wire endpoint dangles* and *no two nets overlap collinearly*.
+Additional suites (added during the clean-architecture refactor — see
+[docs/VERIFICATION.md](./docs/VERIFICATION.md)):
 
-`scripts/verify-circuitverse.ts` separately validates the CircuitVerse geometry.
+```bash
+npm run verify:services       # 62 use-case checks (in-memory repositories, plain Node)
+npm run verify:boundaries     # architectural layer checks (imports under src/)
+node scripts/verify-api.mjs   # 70 REST-contract checks (needs dev server + fresh db;
+                              #   baseline in docs/verification/api-contract.json)
+```
+
+`scripts/verify-circuitverse.ts` (run with **Bun**: `bun run scripts/verify-circuitverse.ts`)
+separately validates the CircuitVerse geometry — 64,205 checks.
+
+It covers the parser, minimiser, K-maps, expressions, project validation, the circuit netlists and evaluators, wire routing, factoring, the full-decoder view, every bits × form × style combination, the Falstad netlist geometry, and the standard patterns — including geometric invariants such as *no wire endpoint dangles* and *no two nets overlap collinearly*.
 
 **Principle:** a claim the UI makes must be backed by a check. That is why the badge reports the two-level vs layered comparison rather than asserting an improvement.
 
@@ -106,24 +119,35 @@ Stated plainly, because they are real:
 ```
 src/
   app/                     Next.js App Router shell + REST routes (/api/projects, /api/presets)
-  components/simulator/    Tab UIs, including logic-circuit/ (canvas, inspector, gate symbols)
+                           routes are thin; use cases live in src/server
+  server/                  server application layer: kernel (owner/body-guard/errors),
+                           projects/ + presets/ (service · repository · Prisma adapter),
+                           composition root, Prisma singleton
+  components/simulator/    Tab UIs, including logic-circuit/ (canvas, inspector,
+                           shared toolbar controls, gate symbols)
   components/ui/           shadcn/ui primitives
-  lib/                     Zustand store, derived-state hooks, Prisma client
-  logic/                   PURE logic layer — no React, no DOM
+  lib/                     Zustand store (slices), preset sync engine, typed API
+                           client, use-cases hooks, derived-state engine
+  logic/                   PURE logic layer — no React, no DOM (enforced: verify:boundaries)
     truthTable  minimizer  kmap  expressions  engine  decoder
     circuitNetlist  circuitLayout  wireRouting  factoring  factoredDecoderCircuit
     booleanParser  verilogGenerator  circuitverse  falstad  standardPatterns  font
+    presets  project  validation  binary
 prisma/                    schema + SQLite database
-scripts/                   verification suites
+scripts/                   verification suites (logic, circuitverse, services, api, boundaries)
+docs/                      architecture + refactor plan/progress/evidence + ADRs
 ```
 
-The `src/logic/` layer is deliberately free of React and DOM so it can be tested directly and reasoned about in isolation.
+The `src/logic/` layer is deliberately free of React and DOM so it can be tested directly and reasoned about in isolation. `src/server/` holds the use cases and persistence behind repository interfaces; `src/lib/` holds client state and transport. Dependencies point toward `src/logic` — [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) has the full diagram.
 
 ---
 
 ## Documentation
 
 - **[PRD.md](./PRD.md)** — product requirements: goals, non-goals, numbered functional and non-functional requirements, data model, verification strategy.
+- **[AGENTS.md](./AGENTS.md)** — working guide for coding agents: module ownership, layer rules, commands, traps.
+- **[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)** — the implemented architecture: layers, dependency diagram, request/data flows, how to extend.
+- **[docs/REFACTOR_PLAN.md](./docs/REFACTOR_PLAN.md) / [REFACTOR_PROGRESS.md](./docs/REFACTOR_PROGRESS.md) / [VERIFICATION.md](./docs/VERIFICATION.md)** — the clean-architecture refactor: plan, phase status, verification evidence.
 - **[worklog.md](./worklog.md)** — chronological engineering log of every task, including the bugs found and how.
 
 ---
