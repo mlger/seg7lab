@@ -26,7 +26,8 @@
  * chart prints twice are kept in both places.
  */
 import { SEGMENT_NAMES, type SegmentName } from '@/types/simulator';
-import { FONT_GLYPHS } from './font';
+import { FONT_GLYPHS, FONT_GROUPS } from './font';
+import { HEX_PATTERNS } from './truthTable';
 
 /** Bit position of each segment in the chart's printed code. */
 const SEGMENT_BIT: Record<SegmentName, number> = {
@@ -214,3 +215,26 @@ export const ROMAN_LETTER_PATTERNS: RomanPattern[] = FONT_GLYPHS.map((g) => {
     pattern: patternFromCode(code),
   };
 });
+
+/* ------------------------------------------------------------------ */
+/* The character editor palette (the "Apply a standard pattern" grid)  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The Roman-letters chart as quick-apply groups for the per-minterm
+ * character editor dialog (its "Apply a standard pattern" section).
+ *
+ * The dialog's first row already offers the HEX patterns (0-9 A b C d E F)
+ * literally, and those six letters carry EXACTLY the same segments in the
+ * hex set and in the Roman chart (the verification suite pins this), so
+ * they are filtered out here — no pattern is offered twice, and every
+ * other glyph of the picture is offered, in chart order, grouped exactly
+ * as the picture groups them (Uppercase / Lowercase / Punctuation).
+ */
+export const CHARACTER_EDITOR_ROMAN: { label: string; patterns: RomanPattern[] }[] =
+  FONT_GROUPS.map(({ label, from, to }) => ({
+    label,
+    patterns: ROMAN_LETTER_PATTERNS
+      .slice(from, to + 1)
+      .filter((p) => !(p.char in HEX_PATTERNS)),
+  }));

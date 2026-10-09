@@ -25,7 +25,7 @@
 import { parseBoolean, astToAscii, evalBool } from '@/logic/booleanParser';
 import type { BoolAst } from '@/logic/booleanParser';
 import { minimize, implicantMinterms } from '@/logic/minimizer';
-import { presetTable, segmentSets } from '@/logic/truthTable';
+import { presetTable, segmentSets, HEX_PATTERNS } from '@/logic/truthTable';
 import { computeEngines } from '@/logic/engine';
 import { buildCircuitverseProject } from '@/logic/circuitverse';
 import { validateLibraryTablePreset, validateLibraryFontPreset } from '@/logic/presets';
@@ -41,7 +41,7 @@ import {
 import {
   STANDARD_PATTERNS, STANDARD_DIGITS, STANDARD_GLYPHS, STANDARD_DIGIT_START,
   segmentsFromCode, standardPatternForChar,
-  ROMAN_LETTER_PATTERNS, codeFromSegments,
+  ROMAN_LETTER_PATTERNS, codeFromSegments, CHARACTER_EDITOR_ROMAN,
 } from '@/logic/standardPatterns';
 import {
   standardPatternTable, romanPatternTable, findBuiltinTablePreset, buildPresetTable,
@@ -2400,6 +2400,41 @@ section('17. roman letters: the reference picture as a standard pattern');
           const codeChart = standardPatternForChar(ch);
           return roman !== undefined && codeChart !== undefined && roman.code === codeChart.code;
         }));
+  }
+
+  /* --- The character-editor palette (dialog "Apply a standard pattern") - */
+  {
+    // The per-minterm editor dialog (CustomCharacterCard) offers the picture's
+    // glyphs below the hex quick row. The hex row already shows 0-9 A b C d E F
+    // literally, and those six letters are pattern-identical in both charts,
+    // so the palette drops them — nothing is offered twice, nothing is lost.
+    const offered = CHARACTER_EDITOR_ROMAN.flatMap((g) => g.patterns);
+    const offeredChars = new Set(offered.map((p) => p.char));
+    const excluded = ROMAN_LETTER_PATTERNS.filter((p) => !offeredChars.has(p.char));
+    equal('exactly the six hex-row letters are excluded from the palette',
+      excluded.map((p) => p.char).sort().join(''), 'ACEFbd');
+    check('no glyph is duplicated inside the palette',
+      offeredChars.size === offered.length);
+    check('palette + excluded covers the whole 74-glyph picture',
+      offered.length + excluded.length === 74);
+    check('the excluded letters have byte-identical hex quick-row patterns',
+      excluded.every((ex) => {
+        const hex = HEX_PATTERNS[ex.char];
+        return hex !== undefined && SEGMENT_NAMES.every((s) => hex[s] === ex.pattern[s]);
+      }));
+    equal('the palette is grouped as the picture rows',
+      CHARACTER_EDITOR_ROMAN.map((g) => g.label).join('|'), 'Uppercase|Lowercase|Punctuation');
+    equal('Uppercase group holds 22 glyphs (26 minus A C E F)',
+      CHARACTER_EDITOR_ROMAN[0].patterns.length, 22);
+    equal('Lowercase group holds 24 glyphs (26 minus b d)',
+      CHARACTER_EDITOR_ROMAN[1].patterns.length, 24);
+    equal('Punctuation group holds all 22 glyphs',
+      CHARACTER_EDITOR_ROMAN[2].patterns.length, 22);
+    check('every palette entry is directly applicable (0/1 values, DP off)',
+      offered.every((p) => SEGMENT_NAMES.every((s) => p.pattern[s] === 0 || p.pattern[s] === 1)
+        && p.pattern.DP === 0));
+    const q = offered.find((p) => p.char === 'q');
+    equal("spot: the palette's 'q' is the picture's q (ACFG)", q?.segments, 'ABCFG');
   }
 
   /* --- The table windows the picture by glyph order -------------------- */

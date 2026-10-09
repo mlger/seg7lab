@@ -114,7 +114,7 @@ The pure logic layer and every layer above it have permanent suites:
 
 | Command | Suite |
 |---|---|
-| `npm run verify:logic:node` | **582 checks** — parser, minimiser, K-maps, expressions, netlists, wire routing, factoring, Falstad geometry, standard patterns, Roman-letters picture pin, determinism |
+| `npm run verify:logic:node` | **592 checks** — parser, minimiser, K-maps, expressions, netlists, wire routing, factoring, Falstad geometry, standard patterns, Roman-letters picture pin, editor palette, determinism |
 | `bun run scripts/verify-circuitverse.ts` | **64,205 checks** — CircuitVerse geometry invariants (no dangling wire endpoints, no collinear net overlaps) |
 | `npm run verify:services` | **62 checks** — use cases with in-memory repositories, plain Node |
 | `npm run verify:boundaries` | Architecture layer checks — imports under `src/` must respect the dependency rules |
